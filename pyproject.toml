@@ -1,0 +1,15 @@
+[project]
+name = "hermes-chatwoot-plugin"
+version = "0.1.0"
+description = "Ferramentas nativas do Hermes para operar a Application API do Chatwoot."
+requires-python = ">=3.11"
+# Dependencia externa: instalacao documentada no README enquanto o cliente nao
+# dispuser de uma distribuicao versionada acessivel a Hermes PM.
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10", "PyYAML>=6,<7"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

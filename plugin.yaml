@@ -1,0 +1,16 @@
+name: chatwoot-tools
+version: 0.1.0
+description: Ferramentas Hermes para a Application API do Chatwoot via chatwoot_client.
+provides_tools:
+  - chatwoot_get_conversation
+  - chatwoot_list_messages
+  - chatwoot_send_public_message
+  - chatwoot_send_private_note
+  - chatwoot_set_status
+  - chatwoot_add_labels
+  - chatwoot_remove_labels
+config_schema:
+  installations:
+    type: dict
+    required: true
+    description: Instalacoes nomeadas com URL, token_env, contas, inboxes e operacoes autorizadas.
