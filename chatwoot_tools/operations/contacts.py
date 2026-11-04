@@ -14,7 +14,7 @@ def get(cw: Any, aid: int, iid: int, contact_id: int):
 
 
 def list_conversations(cw: Any, aid: int, iid: int, contact_id: int):
-    contact_identity(cw, aid, iid, contact_id)
+    # ToolService ja comprovou a associacao; nao repetir o GET do detalhe.
     raw = cw.contacts.list_conversations(aid, contact_id)
     items, form = payload_items(raw)
     allowed = []
