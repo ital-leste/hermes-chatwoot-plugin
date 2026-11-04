@@ -7,7 +7,7 @@ from conftest import FakeClient
 
 def run(svc,name="chatwoot_get_conversation", **values):
     from hermes_chatwoot_v02_tests.chatwoot_tools.service import _CONVERSATION,_CONTACT
-    kwargs={"credential":"italbot","account_id":17,"inbox_id":4}
+    kwargs={"credential":"atendimento","account_id":17,"inbox_id":4}
     if name in _CONVERSATION: kwargs["conversation_id"]=482
     if name in _CONTACT: kwargs["contact_id"]=25
     kwargs.update(values)
@@ -175,50 +175,50 @@ def test_timeout_depois_da_guardia_indeterminado(plugin,cfg):
     assert "secret" not in json.dumps(r)
 
 
-def test_tres_usuarios_mesma_instalacao_tokens_distintos(svc, factory):
-    for usuario, esperado in (("italbot", "token_value"), ("luiz", "token_luiz")):
+def test_multiplas_identidades_mesma_conta_tokens_distintos(svc, factory):
+    for usuario, esperado in (("atendimento", "token_value"), ("operador_a", "token_operador_a")):
         resultado = run(svc, "chatwoot_send_public_message", credential=usuario, content="Bom dia")
         assert resultado["success"] and resultado["credential"] == usuario
     assert factory.urls == [
         ("https://chatwoot.exemplo.com", "token_value"),
-        ("https://chatwoot.exemplo.com", "token_luiz"),
+        ("https://chatwoot.exemplo.com", "token_operador_a"),
     ]
     assert all(c.closed for c in factory.clients)
-    assert "token_luiz" not in json.dumps(resultado)
+    assert "token_operador_a" not in json.dumps(resultado)
 
 
 def test_conta_bloqueada_para_credencial_antes_de_http(svc, factory):
-    result = run(svc, "chatwoot_send_public_message", credential="marcio", content="Oi")
+    result = run(svc, "chatwoot_send_public_message", credential="operador_b", content="Oi")
     assert result["error"]["code"] == "scope_denied"
     assert not factory.clients
 
 
 def test_credencial_desconhecida_ou_removida_negada(svc, cfg, factory):
     assert run(svc, credential="intruso")["error"]["code"] == "operation_denied"
-    del cfg["credentials"]["luiz"]
-    assert run(svc, credential="luiz")["error"]["code"] == "operation_denied"
+    del cfg["credentials"]["operador_a"]
+    assert run(svc, credential="operador_a")["error"]["code"] == "operation_denied"
     assert not factory.clients
 
 
 def test_credencial_criada_sem_modificar_codigo(svc, cfg, factory, monkeypatch):
-    cfg["credentials"]["renata"] = {
-        "token_env": "CHATWOOT_RENATA_TOKEN", "allowed_account_ids": [17],
+    cfg["credentials"]["operador_c"] = {
+        "token_env": "CHATWOOT_OPERADOR_C_TOKEN", "account_id": 17,
     }
     # O serviço resolve a configuração novamente a cada execução.
     svc.secret_provider = lambda key: {
         "CHATWOOT_BASE_URL": "https://chatwoot.exemplo.com",
-        "CHATWOOT_RENATA_TOKEN": "token_renata",
+        "CHATWOOT_OPERADOR_C_TOKEN": "token_operador_c",
     }.get(key)
-    assert run(svc, credential="renata")["success"]
-    assert factory.urls == [("https://chatwoot.exemplo.com", "token_renata")]
+    assert run(svc, credential="operador_c")["success"]
+    assert factory.urls == [("https://chatwoot.exemplo.com", "token_operador_c")]
 
 
 def test_rotacao_token_sem_recriar_servico(svc, factory):
-    secrets = {"CHATWOOT_BASE_URL": "https://chatwoot.exemplo.com", "CHATWOOT_LUIZ_TOKEN": "primeiro"}
+    secrets = {"CHATWOOT_BASE_URL": "https://chatwoot.exemplo.com", "CHATWOOT_OPERADOR_A_TOKEN": "primeiro"}
     svc.secret_provider = lambda key: secrets.get(key)
-    assert run(svc, credential="luiz")["success"]
-    secrets["CHATWOOT_LUIZ_TOKEN"] = "rotacionado"
-    assert run(svc, credential="luiz")["success"]
+    assert run(svc, credential="operador_a")["success"]
+    secrets["CHATWOOT_OPERADOR_A_TOKEN"] = "rotacionado"
+    assert run(svc, credential="operador_a")["success"]
     assert factory.urls[-2:] == [
         ("https://chatwoot.exemplo.com", "primeiro"),
         ("https://chatwoot.exemplo.com", "rotacionado"),
@@ -228,20 +228,20 @@ def test_rotacao_token_sem_recriar_servico(svc, factory):
 def test_token_indisponivel_bloqueia_antes_de_http(plugin, cfg, factory):
     from hermes_chatwoot_v02_tests.chatwoot_tools.service import ToolService
     svc = ToolService(lambda: cfg, secret_provider=lambda key: "https://chatwoot.exemplo.com" if key == "CHATWOOT_BASE_URL" else None, client_factory=factory.make)
-    assert run(svc, credential="luiz")["error"]["code"] == "credentials_unavailable"
+    assert run(svc, credential="operador_a")["error"]["code"] == "credentials_unavailable"
     assert not factory.clients
 
 
 def test_url_do_ambiente_obrigatoria(plugin, cfg, factory):
     from hermes_chatwoot_v02_tests.chatwoot_tools.service import ToolService
-    svc = ToolService(lambda: cfg, secret_provider=lambda key: "tok" if key == "CHATWOOT_LUIZ_TOKEN" else None, client_factory=factory.make)
-    assert run(svc, credential="luiz")["error"]["code"] == "credentials_unavailable"
+    svc = ToolService(lambda: cfg, secret_provider=lambda key: "tok" if key == "CHATWOOT_OPERADOR_A_TOKEN" else None, client_factory=factory.make)
+    assert run(svc, credential="operador_a")["error"]["code"] == "credentials_unavailable"
     assert not factory.clients
 
 
 def test_nao_pode_informar_nome_variavel_ou_token_diretamente(svc, factory):
-    for params in ({"token_env": "CHATWOOT_LUIZ_TOKEN"}, {"api_token": "segredo"}, {"base_url": "https://example.com"}):
-        r = run(svc, credential="luiz", **params)
+    for params in ({"token_env": "CHATWOOT_OPERADOR_A_TOKEN"}, {"api_token": "segredo"}, {"base_url": "https://example.com"}):
+        r = run(svc, credential="operador_a", **params)
         assert r["error"]["code"] == "invalid_arguments"
     assert not factory.clients
 
@@ -252,6 +252,20 @@ def test_nao_vaza_tokens_em_erro_remoto(plugin, cfg):
     svc = ToolService(lambda: cfg,
         secret_provider=lambda key: "https://chatwoot.exemplo.com" if key == "CHATWOOT_BASE_URL" else "token_seguro",
         client_factory=lambda *_: fake)
-    resultado = run(svc, "chatwoot_send_public_message", content="Oi", credential="luiz")
+    resultado = run(svc, "chatwoot_send_public_message", content="Oi", credential="operador_a")
     assert resultado["error"]["code"] == "execution_error"
     assert "token_seguro" not in json.dumps(resultado)
+
+
+def test_mesma_credencial_so_uma_conta(plugin, cfg, factory):
+    from hermes_chatwoot_v02_tests.chatwoot_tools.service import ToolService
+    svc = ToolService(lambda: cfg, secret_provider=lambda name: "https://chatwoot.exemplo.com" if name == "CHATWOOT_BASE_URL" else "token", client_factory=factory.make)
+    # A identidade configurada pode ser usada somente em sua conta explicitamente definida.
+    cfg["credentials"]["operador_a"]["account_id"] = 19
+    response = run(svc, credential="operador_a", account_id=17)
+    assert response["error"]["code"] == "scope_denied"
+    assert not factory.clients
+    # A validação não deduz a conta; aceita a conta 19 quando recebida explicitamente.
+    response = run(svc, credential="operador_a", account_id=19)
+    assert response["success"]
+    assert factory.urls == [("https://chatwoot.exemplo.com", "token")]

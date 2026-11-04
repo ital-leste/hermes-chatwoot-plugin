@@ -1,5 +1,5 @@
 name: chatwoot-tools
-version: 0.2.0-rc.2
+version: 0.2.0-rc.3
 description: Ferramentas para a Application API do Chatwoot via chatwoot_client.
 provides_tools:
   - chatwoot_get_conversation
@@ -22,7 +22,7 @@ config_schema:
   credentials:
     type: dict
     required: true
-    description: Identidades de usuário, nome da variável de token e contas permitidas.
+    description: Identidades de usuário, nome da variável de token e única conta vinculada a cada identidade.
   allow_insecure_http:
     type: bool
     default: false

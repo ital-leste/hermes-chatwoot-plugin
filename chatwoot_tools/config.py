@@ -23,7 +23,7 @@ WRITABLE_FIELDS = frozenset({
 _KEYS = frozenset({"base_url_env", "credentials", "allow_insecure_http", "allowed_operations", "writable_contact_fields"})
 _ENV_NAME = re.compile(r"[A-Z_][A-Z0-9_]{0,127}\Z")
 _IDENTITY_NAME = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}\Z")
-_CREDENTIAL_KEYS = frozenset({"token_env", "allowed_account_ids"})
+_CREDENTIAL_KEYS = frozenset({"token_env", "account_id"})
 
 
 def _env_name(value: object, label: str) -> str:
@@ -36,7 +36,7 @@ def _env_name(value: object, label: str) -> str:
 class Credential:
     name: str
     token_env: str
-    account_ids: frozenset[int]
+    account_id: int
 
 
 def _credentials(raw: object) -> Mapping[str, Credential]:
@@ -50,14 +50,12 @@ def _credentials(raw: object) -> Mapping[str, Credential]:
         if not isinstance(value, Mapping) or set(value) - _CREDENTIAL_KEYS:
             raise ConfigurationError("Credencial contém campos desconhecidos ou formato inválido.")
         env_name = _env_name(value.get("token_env"), f"token_env de {name}")
-        ids = value.get("allowed_account_ids")
-        if (not isinstance(ids, list) or not ids or
-                any(type(i) is not int or i <= 0 for i in ids) or
-                len(set(ids)) != len(ids)):
-            raise ConfigurationError("allowed_account_ids da credencial deve conter IDs positivos únicos.")
+        account_id = value.get("account_id")
+        if type(account_id) is not int or account_id <= 0:
+            raise ConfigurationError("account_id da credencial deve ser um inteiro positivo.")
         if env_name in used_env_names:
             raise ConfigurationError("Duas identidades não podem referenciar o mesmo token_env.")
-        entries[name] = Credential(name, env_name, frozenset(ids))
+        entries[name] = Credential(name, env_name, account_id)
         used_env_names.add(env_name)
     return MappingProxyType(entries)
 

@@ -1,5 +1,12 @@
 # Histórico
 
+## 0.2.0rc3 — homolog
+
+- Torna o plugin agnóstico: exemplos, testes e documentação não contêm dados ou nomes de uma organização consumidora.
+- Substitui a lista `allowed_account_ids` por `account_id` único em cada identidade; nenhum token pode ser autorizado para várias contas por uma única entrada.
+- Preserva a seleção explícita de credencial e de tríade nas ferramentas, com validação de igualdade antes de acessar a rede.
+- Mantém dependência externa documentada sem acoplar o pacote à finalidade de uma empresa específica.
+
 ## 0.2.0rc2 — homolog
 
 - Elimina `installation`/aliases e define uma conexão Chatwoot por perfil Hermes.

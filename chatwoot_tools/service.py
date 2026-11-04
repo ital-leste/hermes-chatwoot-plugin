@@ -113,7 +113,7 @@ class ToolService:
             credential = cfg.credentials.get(data["credential"])
             if credential is None:
                 raise AuthorizationError("Identidade de usuário não autorizada neste perfil.")
-            if data["account_id"] not in credential.account_ids:
+            if data["account_id"] != credential.account_id:
                 raise ScopeError("Conta não autorizada para a credencial selecionada.")
             url, token = resolve_connection(cfg, credential, self.secret_provider)
             with self.client_factory(url, token) as cw:

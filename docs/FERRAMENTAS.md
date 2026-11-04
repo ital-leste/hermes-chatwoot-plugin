@@ -1,4 +1,4 @@
-# Contratos das ferramentas v0.2.0rc2
+# Contratos das ferramentas v0.2.0rc3
 
 ## Identidade
 
@@ -26,26 +26,26 @@ Todos os resultados bem-sucedidos são texto JSON com `success`, `operation`, `c
 ### Exemplo de publicação
 
 ```json
-{"credential":"italbot","account_id":1,"inbox_id":4,"conversation_id":482,"content":"Bom dia!"}
+{"credential":"atendimento","account_id":7,"inbox_id":4,"conversation_id":482,"content":"Bom dia!"}
 ```
 
 ### Exemplo de busca de contato
 
 ```json
-{"credential":"italbot","account_id":1,"inbox_id":4,"q":"Maria","page":1}
+{"credential":"atendimento","account_id":7,"inbox_id":4,"q":"Maria","page":1}
 ```
 
 ### Exemplo de edição de contato
 
 ```json
-{"credential":"italbot","account_id":1,"inbox_id":4,"contact_id":25,"fields":{"name":"Maria","phone_number":"+5511999999999"}}
+{"credential":"atendimento","account_id":7,"inbox_id":4,"contact_id":25,"fields":{"name":"Maria","phone_number":"+5511999999999"}}
 ```
 
 Se `email` não estiver autorizado, a combinação `{"name":"Maria","email":"..."}` será rejeitada integralmente antes da escrita. `phone_number` precisa atender ao formato E.164 validado por `Contact` do cliente Python.
 
 ### Seleção de usuário
 
-`credential: "italbot"`, `credential: "luiz"` e `credential: "marcio"` podem apontar para tokens diferentes da mesma instalação. `allowed_account_ids` limita quais contas cada token pode acessar no plugin. A API Chatwoot aplica as permissões reais do token e atribui a autoria segundo a identidade autenticada — a correspondência deve ser verificada em homologação. Alterar o nome do campo `credential` não altera a autoria no servidor. A v0.2rc2 não vincula automaticamente uma identidade de usuário a uma sessão de atendimento; o agente pode escolher qualquer uma das identidades que o perfil disponibiliza.
+`credential: "atendimento"`, `credential: "operador_a"` e `credential: "operador_b"` podem apontar para tokens diferentes da mesma instalação. `account_id` vincula a identidade selecionada a uma única conta e deve corresponder ao parâmetro explícito da ferramenta. A API Chatwoot aplica as permissões reais do token e atribui a autoria segundo a identidade autenticada — a correspondência deve ser verificada em homologação. Alterar o nome do campo `credential` não altera a autoria no servidor. A v0.2rc3 não vincula automaticamente uma identidade de usuário a uma sessão de atendimento; o agente pode escolher qualquer uma das identidades que o perfil disponibiliza.
 
 ### Erros
 

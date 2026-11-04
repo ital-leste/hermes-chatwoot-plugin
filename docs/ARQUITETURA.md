@@ -1,4 +1,4 @@
-# Arquitetura da v0.2.0rc2
+# Arquitetura da v0.2.0rc3
 
 ## Objetivo
 
@@ -14,7 +14,7 @@ Hermes register(ctx)
 Chamada (credential, account_id, inbox_id, conversation_id, dados):
   -> ToolService valida esquema e configurações do perfil
   -> verifica allowed_operations / writable_contact_fields
-  -> escolhe somente uma identidade configurada em credentials e verifica allowed_account_ids
+  -> escolhe somente uma identidade configurada em credentials e confere igualdade entre o `account_id` informado e o `account_id` único da credencial
   -> agent.secret_scope.get_secret(base_url_env)
   -> agent.secret_scope.get_secret(credentials[credential].token_env)
   -> valida HTTP(S) e instancia CWClient(base_url, token) com context manager
@@ -35,7 +35,7 @@ A conexão não possui aliases de instalações nem mudanças arbitrárias de se
 | `__init__.py` | `register(ctx)` sem efeitos HTTP |
 | `schemas.py` | JSON Schemas das 12 ferramentas |
 | `tools.py` | Adaptadores Hermes; não inferem destinatário por `session_id` |
-| `config.py` | Configuração imutável, catálogo de identidades autorizadas, escopo de contas e permissões |
+| `config.py` | Configuração imutável, catálogo de identidades autorizadas, vínculo de uma única conta por credencial e permissões |
 | `connection.py` | Leitura de URL/token do perfil, validação HTTP(S) e construção do cliente externo |
 | `validators.py` | Validação de tríade e vínculo de contatos com inbox |
 | `permissions.py` | Allowlist por operação e campo |

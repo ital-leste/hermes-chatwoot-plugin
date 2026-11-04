@@ -1,7 +1,7 @@
 """Contratos JSON Schema apresentados ao agente Hermes."""
 from __future__ import annotations
 
-CREDENTIAL = {"credential": {"type": "string", "minLength": 1, "description": "Identidade autorizada do perfil (ex.: italbot, luiz, marcio). Não é token nem nome de variável."}}
+CREDENTIAL = {"credential": {"type": "string", "minLength": 1, "description": "Identidade autorizada do perfil (ex.: atendimento, operador_a, operador_b). Não é token nem nome de variável."}}
 ACCOUNT = {"account_id": {"type": "integer", "minimum": 1, "description": "ID da conta Chatwoot."}}
 INBOX = {"inbox_id": {"type": "integer", "minimum": 1, "description": "ID da inbox dentro da conta."}}
 CONVERSATION = {"conversation_id": {"type": "integer", "minimum": 1, "description": "ID da conversa; associação com a inbox será verificada."}}
