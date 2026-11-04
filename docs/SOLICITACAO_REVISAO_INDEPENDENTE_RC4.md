@@ -2,7 +2,7 @@
 
 **Branch:** `homolog`  
 **Base anterior:** `5c2710bfb551863e2213e4ec6cfd2c4d32a31e0b`  
-**Candidato:** `fe58d57f01b79fbf706167f13bf5f9378a84c7a4`
+**Candidato:** HEAD imutável da `homolog` no momento da revisão; registrar o SHA final no relatório e no PR. Não inserir SHA autorreferente neste documento.
 
 ## Objetivo
 Avaliar a implementação sem pressupor aprovação por testes simulados ou pelo desenho arquitetural. Não instalar nem executar operações reais no Chatwoot sem autorização específica. Não promover a `main`.
