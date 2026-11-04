@@ -8,6 +8,8 @@
 - Alinha `fields` ao `Contact` tipado e mantém os mapas livres de atributos.
 - Acrescenta regressões com SDK real e `httpx.MockTransport` em CI; provisionamento da dependência por SHA de homologação.
 - Documenta instalação por SHA e separação dos gates de código, integração e release.
+- Fecha divergência residual F3 para newline terminal em email/telefone, com testes SDK sem HTTP; documenta contexto correto de diagnóstico.
+- CI também executa Python 3.14 e registra dependências de teste com versões fixadas.
 - **Pendente:** validação real Hermes/Chatwoot, adaptação dos schemas no provedor alvo e distribuição formal do SDK.
 
 ## 0.2.0rc3 — homolog

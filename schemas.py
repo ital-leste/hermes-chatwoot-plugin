@@ -24,8 +24,8 @@ CONTACT_FIELDS = {
     "description": "Somente campos de Contact; adicionalmente sujeitos a writable_contact_fields.",
     "properties": {
         "name": {**CONTACT_TEXT, "maxLength": 255},
-        "email": {**CONTACT_TEXT, "pattern": r"^[^@\s]+@[^@\s]+$"},
-        "phone_number": {**CONTACT_TEXT, "pattern": r"^\+[1-9]\d{1,14}$"},
+        "email": {**CONTACT_TEXT, "pattern": r"^[^@\s]+@[^@\s]+(?![\s\S])"},
+        "phone_number": {**CONTACT_TEXT, "pattern": r"^\+[1-9]\d{1,14}(?![\s\S])"},
         "identifier": dict(CONTACT_TEXT),
         "blocked": {"type": "boolean"},
         "avatar_url": dict(CONTACT_TEXT),

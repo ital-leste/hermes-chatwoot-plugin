@@ -119,12 +119,19 @@ Veja [Segurança do perfil](docs/SEGURANCA_PERFIL.md) para as configurações de
 Para homologação, utilizar a revisão imutável aprovada. Substitua `<SHA_HOMOLOG_VALIDADO>` pelo SHA completo registrado no **relatório do commit final**, não tente colocar o SHA do próprio commit dentro deste README:
 
 ```bash
-hermes plugins install ital-leste/hermes-chatwoot-plugin --ref <SHA_HOMOLOG_VALIDADO>
-hermes plugins enable chatwoot-tools
-hermes plugins list
-hermes plugins validate .
-hermes plugins doctor . --ci
+# Para habilitar o plugin, selecione explicitamente o perfil de destino:
+hermes -p <PERFIL_DESTINO> plugins install ital-leste/hermes-chatwoot-plugin --ref <SHA_HOMOLOG_VALIDADO>
+hermes -p <PERFIL_DESTINO> plugins enable chatwoot-tools
+hermes -p <PERFIL_DESTINO> plugins list
+hermes -p <PERFIL_DESTINO> plugins doctor chatwoot-tools --ci
+
+# Somente em um checkout local do plugin, a partir de seu diretório-raiz:
+cd /caminho/para/hermes-chatwoot-plugin
+hermes -p <PERFIL_DESTINO> plugins validate .
+hermes -p <PERFIL_DESTINO> plugins doctor . --ci
 ```
+
+A sintaxe `-p` seleciona o perfil para esta chamada sem alterar o perfil padrão. Antes da instalação, confirme no Hermes instalado que os comandos e a opção `-p` são suportados e que o perfil foi criado. Não ative inadvertidamente no perfil `default`.
 
 **Distribuição pendente:** a biblioteca independente que fornece o módulo `chatwoot_client` ainda não possui uma distribuição versionada confirmada e licenciada num índice Python compatível com o gerenciador Hermes. Por isso, o manifesto do plugin mantém `dependencies = []` temporariamente.
 
@@ -140,7 +147,7 @@ O comando acima é de **provisionamento de homologação** e precisa ser executa
 ## Testes e homologação
 
 ```bash
-python -m pip install 'pytest>=8,<10' 'PyYAML>=6,<7' 'jsonschema>=4,<5'
+python -m pip install 'pytest==9.2.0' 'PyYAML==6.0.3' 'jsonschema==4.26.0'
 python -m pytest -q
 ```
 

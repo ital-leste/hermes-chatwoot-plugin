@@ -8,7 +8,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.11', '3.12', '3.13']
+        python-version: ['3.11', '3.12', '3.13', '3.14']
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,9 +17,11 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Dependencias de testes e Chatwoot Client com SHA fixo
         run: |
-          python -m pip install 'pytest>=8,<10' 'PyYAML>=6,<7' 'jsonschema>=4,<5'
+          python -m pip install 'pytest==9.2.0' 'PyYAML==6.0.3' 'jsonschema==4.26.0'
           python -m pip install 'git+https://github.com/ital-leste/chatwoot-client.git@ef7254b5e45d27e710e23a4c6bc255f55d147206'
           python -c 'from chatwoot_client import CWClient, Contact; print("SDK Chatwoot carregado")'
+          python -m pip check
+          python -m pip freeze
       - name: Suite unitária e contratos com SDK real/MockTransport
         run: python -m pytest -q -ra
       - name: Validação estática

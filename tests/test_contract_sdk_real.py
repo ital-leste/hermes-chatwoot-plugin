@@ -383,3 +383,33 @@ def test_atualizacao_contato_envelope_e_json_original(setup):
     assert out["success"] and out["data"]["payload"]["blocked"] is False
     assert out["data"]["meta"] == {"source": "api"}
     assert setup.calls == [("GET", CONTACT), ("PUT", CONTACT)]
+@pytest.mark.parametrize("fields", [
+    {"email": "a@b\n"},
+    {"phone_number": "+55123\n"},
+])
+def test_schema_rejeita_quebra_linha_final_antes_de_acessar_api(setup, fields):
+    """JSON Schema, SDK Contact e serviço devem rejeitar o mesmo valor sem HTTP."""
+    from importlib.util import spec_from_file_location, module_from_spec
+    spec = spec_from_file_location("schema_rc4_end_of_string", ROOT / "schemas.py")
+    schema_module = module_from_spec(spec)
+    spec.loader.exec_module(schema_module)
+    validator = jsonschema.Draft7Validator(schema_module.CONTACT_FIELDS)
+    assert list(validator.iter_errors(fields)), "Schema não pode anunciar contrato mais amplo que SDK"
+    with pytest.raises((ValueError, TypeError)):
+        sdk.Contact(**fields)
+    result = setup.call("chatwoot_update_contact", fields=fields)
+    assert result["error"]["code"] == "invalid_arguments"
+    assert setup.calls == []
+
+
+@pytest.mark.parametrize("fields", [
+    {"email": "a@b"},
+    {"phone_number": "+55123"},
+])
+def test_schema_aceita_casos_validos_sem_mudar_valor(fields):
+    from importlib.util import spec_from_file_location, module_from_spec
+    spec = spec_from_file_location("schema_rc4_valid_end", ROOT / "schemas.py")
+    schema_module = module_from_spec(spec)
+    spec.loader.exec_module(schema_module)
+    assert not list(jsonschema.Draft7Validator(schema_module.CONTACT_FIELDS).iter_errors(fields))
+    assert sdk.Contact(**fields).to_payload() == fields
