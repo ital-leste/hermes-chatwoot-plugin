@@ -7,7 +7,7 @@ from conftest import FakeClient
 
 def run(svc,name="chatwoot_get_conversation", **values):
     from hermes_chatwoot_v02_tests.chatwoot_tools.service import _CONVERSATION,_CONTACT
-    kwargs={"account_id":17,"inbox_id":4}
+    kwargs={"credential":"italbot","account_id":17,"inbox_id":4}
     if name in _CONVERSATION: kwargs["conversation_id"]=482
     if name in _CONTACT: kwargs["contact_id"]=25
     kwargs.update(values)
@@ -31,7 +31,7 @@ def test_publicacao_e_guardia_previa(svc,factory):
 def test_inbox_errada_bloqueia_escrita(plugin,cfg):
     from hermes_chatwoot_v02_tests.chatwoot_tools.service import ToolService
     c=FakeClient(inbox=6)
-    svc=ToolService(lambda:cfg,secret_provider=lambda _:"x",client_factory=lambda *a:c)
+    svc=ToolService(lambda:cfg,secret_provider=lambda key:"https://chatwoot.exemplo.com" if key == "CHATWOOT_BASE_URL" else "x",client_factory=lambda *a:c)
     r=run(svc,"chatwoot_send_public_message",content="x")
     assert r["error"]["code"]=="scope_denied"
     assert c.calls==[("conversation.get",17,482)]
@@ -40,7 +40,7 @@ def test_inbox_errada_bloqueia_escrita(plugin,cfg):
 def test_conversation_errada_bloqueia_escrita(plugin,cfg):
     from hermes_chatwoot_v02_tests.chatwoot_tools.service import ToolService
     c=FakeClient(cid=483)
-    svc=ToolService(lambda:cfg,secret_provider=lambda _:"x",client_factory=lambda *a:c)
+    svc=ToolService(lambda:cfg,secret_provider=lambda key:"https://chatwoot.exemplo.com" if key == "CHATWOOT_BASE_URL" else "x",client_factory=lambda *a:c)
     r=run(svc,"chatwoot_set_status",status="open")
     assert r["error"]["code"]=="scope_denied"
     assert c.calls==[("conversation.get",17,482)]
@@ -67,7 +67,7 @@ def test_lista_conversa_filtra_inbox_e_preserva_envelope(svc,factory):
 def test_lista_inbox_errada_rejeita(plugin,cfg):
     from hermes_chatwoot_v02_tests.chatwoot_tools.service import ToolService
     c=FakeClient(conversations=[{"id":12,"inbox_id":8}])
-    svc=ToolService(lambda:cfg,secret_provider=lambda _:"x",client_factory=lambda *a:c)
+    svc=ToolService(lambda:cfg,secret_provider=lambda key:"https://chatwoot.exemplo.com" if key == "CHATWOOT_BASE_URL" else "x",client_factory=lambda *a:c)
     assert run(svc,"chatwoot_list_conversations")["error"]["code"]=="scope_denied"
 
 
@@ -101,7 +101,7 @@ def test_contato_sem_associacao_bloqueado(plugin,cfg):
             return {"payload":[]}
     c=NoAssociation(contact_inboxes=(8,))
     c.contacts.list_conversations=c.contact_conversations
-    svc=ToolService(lambda:cfg,secret_provider=lambda _:"x",client_factory=lambda *a:c)
+    svc=ToolService(lambda:cfg,secret_provider=lambda key:"https://chatwoot.exemplo.com" if key == "CHATWOOT_BASE_URL" else "x",client_factory=lambda *a:c)
     assert run(svc,"chatwoot_update_contact",fields={"name":"Novo"})["error"]["code"]=="scope_denied"
     assert not any(x[0]=="contacts.update" for x in c.calls)
 
@@ -115,7 +115,7 @@ def test_busca_contato_restringe_inbox(svc,factory):
 def test_busca_contato_nao_vinculado(plugin,cfg):
     from hermes_chatwoot_v02_tests.chatwoot_tools.service import ToolService
     c=FakeClient(contact_inboxes=(8,))
-    svc=ToolService(lambda:cfg,secret_provider=lambda _:"x",client_factory=lambda *a:c)
+    svc=ToolService(lambda:cfg,secret_provider=lambda key:"https://chatwoot.exemplo.com" if key == "CHATWOOT_BASE_URL" else "x",client_factory=lambda *a:c)
     # contato 25 possui conversa histórica na inbox 4, comprovada pela API
     assert run(svc,"chatwoot_search_contacts",q="Cliente")["success"]
     assert any(x[0]=="contacts.list_conversations" for x in c.calls)
@@ -158,7 +158,7 @@ def test_credenciais_ausentes(plugin,cfg):
 def test_timeout_em_guardia_nao_resultado_indeterminado(plugin,cfg):
     from hermes_chatwoot_v02_tests.chatwoot_tools.service import ToolService
     c=FakeClient(fail=TimeoutError("sensitive secret"))
-    svc=ToolService(lambda:cfg,secret_provider=lambda _:"x",client_factory=lambda *a:c)
+    svc=ToolService(lambda:cfg,secret_provider=lambda key:"https://chatwoot.exemplo.com" if key == "CHATWOOT_BASE_URL" else "x",client_factory=lambda *a:c)
     assert run(svc,"chatwoot_send_public_message",content="Oi")["error"]["code"]=="execution_error"
 
 
@@ -169,7 +169,89 @@ def test_timeout_depois_da_guardia_indeterminado(plugin,cfg):
             raise TimeoutError("secret 123")
     c=TimeoutOnWrite()
     c.messages.send_text=c.send_text
-    svc=ToolService(lambda:cfg,secret_provider=lambda _:"x",client_factory=lambda *a:c)
+    svc=ToolService(lambda:cfg,secret_provider=lambda key:"https://chatwoot.exemplo.com" if key == "CHATWOOT_BASE_URL" else "x",client_factory=lambda *a:c)
     r=run(svc,"chatwoot_send_public_message",content="Oi")
     assert r["error"]["code"]=="outcome_unknown"
     assert "secret" not in json.dumps(r)
+
+
+def test_tres_usuarios_mesma_instalacao_tokens_distintos(svc, factory):
+    for usuario, esperado in (("italbot", "token_value"), ("luiz", "token_luiz")):
+        resultado = run(svc, "chatwoot_send_public_message", credential=usuario, content="Bom dia")
+        assert resultado["success"] and resultado["credential"] == usuario
+    assert factory.urls == [
+        ("https://chatwoot.exemplo.com", "token_value"),
+        ("https://chatwoot.exemplo.com", "token_luiz"),
+    ]
+    assert all(c.closed for c in factory.clients)
+    assert "token_luiz" not in json.dumps(resultado)
+
+
+def test_conta_bloqueada_para_credencial_antes_de_http(svc, factory):
+    result = run(svc, "chatwoot_send_public_message", credential="marcio", content="Oi")
+    assert result["error"]["code"] == "scope_denied"
+    assert not factory.clients
+
+
+def test_credencial_desconhecida_ou_removida_negada(svc, cfg, factory):
+    assert run(svc, credential="intruso")["error"]["code"] == "operation_denied"
+    del cfg["credentials"]["luiz"]
+    assert run(svc, credential="luiz")["error"]["code"] == "operation_denied"
+    assert not factory.clients
+
+
+def test_credencial_criada_sem_modificar_codigo(svc, cfg, factory, monkeypatch):
+    cfg["credentials"]["renata"] = {
+        "token_env": "CHATWOOT_RENATA_TOKEN", "allowed_account_ids": [17],
+    }
+    # O serviço resolve a configuração novamente a cada execução.
+    svc.secret_provider = lambda key: {
+        "CHATWOOT_BASE_URL": "https://chatwoot.exemplo.com",
+        "CHATWOOT_RENATA_TOKEN": "token_renata",
+    }.get(key)
+    assert run(svc, credential="renata")["success"]
+    assert factory.urls == [("https://chatwoot.exemplo.com", "token_renata")]
+
+
+def test_rotacao_token_sem_recriar_servico(svc, factory):
+    secrets = {"CHATWOOT_BASE_URL": "https://chatwoot.exemplo.com", "CHATWOOT_LUIZ_TOKEN": "primeiro"}
+    svc.secret_provider = lambda key: secrets.get(key)
+    assert run(svc, credential="luiz")["success"]
+    secrets["CHATWOOT_LUIZ_TOKEN"] = "rotacionado"
+    assert run(svc, credential="luiz")["success"]
+    assert factory.urls[-2:] == [
+        ("https://chatwoot.exemplo.com", "primeiro"),
+        ("https://chatwoot.exemplo.com", "rotacionado"),
+    ]
+
+
+def test_token_indisponivel_bloqueia_antes_de_http(plugin, cfg, factory):
+    from hermes_chatwoot_v02_tests.chatwoot_tools.service import ToolService
+    svc = ToolService(lambda: cfg, secret_provider=lambda key: "https://chatwoot.exemplo.com" if key == "CHATWOOT_BASE_URL" else None, client_factory=factory.make)
+    assert run(svc, credential="luiz")["error"]["code"] == "credentials_unavailable"
+    assert not factory.clients
+
+
+def test_url_do_ambiente_obrigatoria(plugin, cfg, factory):
+    from hermes_chatwoot_v02_tests.chatwoot_tools.service import ToolService
+    svc = ToolService(lambda: cfg, secret_provider=lambda key: "tok" if key == "CHATWOOT_LUIZ_TOKEN" else None, client_factory=factory.make)
+    assert run(svc, credential="luiz")["error"]["code"] == "credentials_unavailable"
+    assert not factory.clients
+
+
+def test_nao_pode_informar_nome_variavel_ou_token_diretamente(svc, factory):
+    for params in ({"token_env": "CHATWOOT_LUIZ_TOKEN"}, {"api_token": "segredo"}, {"base_url": "https://example.com"}):
+        r = run(svc, credential="luiz", **params)
+        assert r["error"]["code"] == "invalid_arguments"
+    assert not factory.clients
+
+
+def test_nao_vaza_tokens_em_erro_remoto(plugin, cfg):
+    from hermes_chatwoot_v02_tests.chatwoot_tools.service import ToolService
+    fake = FakeClient(fail=RuntimeError("token_seguro_em_excecao"))
+    svc = ToolService(lambda: cfg,
+        secret_provider=lambda key: "https://chatwoot.exemplo.com" if key == "CHATWOOT_BASE_URL" else "token_seguro",
+        client_factory=lambda *_: fake)
+    resultado = run(svc, "chatwoot_send_public_message", content="Oi", credential="luiz")
+    assert resultado["error"]["code"] == "execution_error"
+    assert "token_seguro" not in json.dumps(resultado)

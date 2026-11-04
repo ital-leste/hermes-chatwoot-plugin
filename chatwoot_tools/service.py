@@ -6,8 +6,8 @@ from typing import Any
 import json
 
 from .config import parse_config, WRITABLE_FIELDS
-from .connection import TOKEN_ENV, create_client, resolve_secret
-from .errors import ArgumentsError, CredentialsError, PluginError
+from .connection import create_client, resolve_secret, resolve_connection
+from .errors import ArgumentsError, AuthorizationError, ScopeError, PluginError
 from .permissions import require_fields, require_operation
 from .validators import conversation_identity, contact_identity
 from .operations import contacts, conversations, labels, messages
@@ -52,7 +52,7 @@ def _arguments(tool: str, raw: object) -> dict[str, Any]:
     if not isinstance(raw, Mapping) or any(type(k) is not str for k in raw):
         raise ArgumentsError("Argumentos devem ser objeto JSON.")
     data = dict(raw)
-    base = {"account_id", "inbox_id"}
+    base = {"credential", "account_id", "inbox_id"}
     if tool in _CONVERSATION:
         base.add("conversation_id")
     if tool in _CONTACT:
@@ -60,7 +60,9 @@ def _arguments(tool: str, raw: object) -> dict[str, Any]:
     opt, req = _OPTIONS[tool]
     if not (base | req).issubset(data) or set(data) - base - opt:
         raise ArgumentsError("Argumentos ausentes ou não reconhecidos.")
-    for key in base:
+    if not isinstance(data["credential"], str) or not data["credential"].strip():
+        raise ArgumentsError("credential deve ser nome de identidade não vazio.")
+    for key in base - {"credential"}:
         if type(data[key]) is not int or data[key] <= 0:
             raise ArgumentsError(f"{key} deve ser inteiro positivo.")
     for key in ("page", "before", "after", "snoozed_until"):
@@ -108,10 +110,13 @@ class ToolService:
             require_operation(cfg, operation)
             if tool == "chatwoot_update_contact":
                 require_fields(cfg, data["fields"])
-            token = self.secret_provider(TOKEN_ENV)
-            if not isinstance(token, str) or not token.strip():
-                raise CredentialsError("Token Chatwoot indisponível no perfil Hermes.")
-            with self.client_factory(cfg.base_url, token.strip()) as cw:
+            credential = cfg.credentials.get(data["credential"])
+            if credential is None:
+                raise AuthorizationError("Identidade de usuário não autorizada neste perfil.")
+            if data["account_id"] not in credential.account_ids:
+                raise ScopeError("Conta não autorizada para a credencial selecionada.")
+            url, token = resolve_connection(cfg, credential, self.secret_provider)
+            with self.client_factory(url, token) as cw:
                 aid, iid = data["account_id"], data["inbox_id"]
                 if tool in _CONVERSATION:
                     # Confere sempre conta, inbox e conversa, independentemente de allowlists.
@@ -132,7 +137,7 @@ class ToolService:
                         result = self._run(cw, tool, data)
                 else:
                     result = self._run(cw, tool, data)
-            return json.dumps({"success": True, "operation": operation, "data": result}, ensure_ascii=False, allow_nan=False)
+            return json.dumps({"success": True, "operation": operation, "credential": data["credential"], "data": result}, ensure_ascii=False, allow_nan=False)
         except PluginError as e:
             return self._error(e.code, str(e))
         except (ValueError, TypeError):

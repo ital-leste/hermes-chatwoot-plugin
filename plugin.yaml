@@ -1,5 +1,5 @@
 name: chatwoot-tools
-version: 0.2.0-rc.1
+version: 0.2.0-rc.2
 description: Ferramentas para a Application API do Chatwoot via chatwoot_client.
 provides_tools:
   - chatwoot_get_conversation
@@ -15,15 +15,14 @@ provides_tools:
   - chatwoot_get_contact_conversations
   - chatwoot_update_contact
 config_schema:
-  base_url:
+  base_url_env:
     type: str
     required: true
-    label: URL do Chatwoot
-  api_token:
-    type: secret
-    env: CHATWOOT_API_TOKEN
+    label: Variável com a URL Chatwoot no perfil
+  credentials:
+    type: dict
     required: true
-    label: Token da Application API
+    description: Identidades de usuário, nome da variável de token e contas permitidas.
   allow_insecure_http:
     type: bool
     default: false

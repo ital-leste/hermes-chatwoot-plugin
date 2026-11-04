@@ -1,6 +1,6 @@
 # Histórico
 
-## 0.2.0rc1 — homolog
+## 0.2.0rc2 — homolog
 
 - Elimina `installation`/aliases e define uma conexão Chatwoot por perfil Hermes.
 - Introduz `config_schema.api_token` como segredo `CHATWOOT_API_TOKEN` e mantém URL em configuração do perfil.

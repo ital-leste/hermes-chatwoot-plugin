@@ -11,7 +11,8 @@ def register(ctx) -> None:
     """Registra ferramentas: sem conexão HTTP e sem acesso a segredos no startup."""
     def settings():
         return {
-            "base_url": ctx.get_config("base_url", default=None),
+            "base_url_env": ctx.get_config("base_url_env", default=None),
+            "credentials": ctx.get_config("credentials", default={}),
             "allow_insecure_http": ctx.get_config("allow_insecure_http", default=False),
             "allowed_operations": ctx.get_config("allowed_operations", default={}),
             "writable_contact_fields": ctx.get_config("writable_contact_fields", default={}),

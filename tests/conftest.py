@@ -105,7 +105,11 @@ class FakeClient:
 
 @pytest.fixture
 def cfg():
-    return {"base_url":"https://chatwoot.exemplo.com", "allowed_operations": {
+    return {"base_url_env":"CHATWOOT_BASE_URL", "credentials": {
+        "italbot": {"token_env": "CHATWOOT_ITALBOT_TOKEN", "allowed_account_ids": [17]},
+        "luiz": {"token_env": "CHATWOOT_LUIZ_TOKEN", "allowed_account_ids": [17, 18]},
+        "marcio": {"token_env": "CHATWOOT_MARCIO_TOKEN", "allowed_account_ids": [18]},
+    }, "allowed_operations": {
         "conversation.read":True,"conversation.list":True,"messages.read":True,
         "messages.send_public":True,"messages.send_private":False,
         "conversation.status.update":True,"conversation.labels.add":True,
@@ -126,4 +130,7 @@ def factory():
 @pytest.fixture
 def svc(plugin, cfg, factory):
     from hermes_chatwoot_v02_tests.chatwoot_tools.service import ToolService
-    return ToolService(lambda:cfg, secret_provider=lambda _:"token_value", client_factory=factory.make)
+    return ToolService(lambda:cfg, secret_provider=lambda key: (
+        "https://chatwoot.exemplo.com" if key == "CHATWOOT_BASE_URL" else
+        {"CHATWOOT_ITALBOT_TOKEN": "token_value", "CHATWOOT_LUIZ_TOKEN": "token_luiz", "CHATWOOT_MARCIO_TOKEN": "token_marcio"}.get(key)
+    ), client_factory=factory.make)

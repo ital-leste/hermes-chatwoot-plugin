@@ -1,6 +1,7 @@
 """Contratos JSON Schema apresentados ao agente Hermes."""
 from __future__ import annotations
 
+CREDENTIAL = {"credential": {"type": "string", "minLength": 1, "description": "Identidade autorizada do perfil (ex.: italbot, luiz, marcio). Não é token nem nome de variável."}}
 ACCOUNT = {"account_id": {"type": "integer", "minimum": 1, "description": "ID da conta Chatwoot."}}
 INBOX = {"inbox_id": {"type": "integer", "minimum": 1, "description": "ID da inbox dentro da conta."}}
 CONVERSATION = {"conversation_id": {"type": "integer", "minimum": 1, "description": "ID da conversa; associação com a inbox será verificada."}}
@@ -9,8 +10,8 @@ CONTACT = {"contact_id": {"type": "integer", "minimum": 1, "description": "ID do
 
 def schema(name: str, description: str, *, identity: dict, extra: dict | None = None, required: tuple[str, ...] = ()):  # noqa: E501
     return {"name": name, "description": description, "parameters": {
-        "type": "object", "properties": {**ACCOUNT, **INBOX, **identity, **(extra or {})},
-        "required": [*ACCOUNT, *INBOX, *identity, *required], "additionalProperties": False,
+        "type": "object", "properties": {**CREDENTIAL, **ACCOUNT, **INBOX, **identity, **(extra or {})},
+        "required": [*CREDENTIAL, *ACCOUNT, *INBOX, *identity, *required], "additionalProperties": False,
     }}
 
 

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
+import re
 from ipaddress import ip_address
 from urllib.parse import urlsplit
 
@@ -18,7 +20,47 @@ WRITABLE_FIELDS = frozenset({
     "name", "phone_number", "email", "identifier", "blocked", "avatar_url",
     "additional_attributes", "custom_attributes",
 })
-_KEYS = frozenset({"base_url", "allow_insecure_http", "allowed_operations", "writable_contact_fields"})
+_KEYS = frozenset({"base_url_env", "credentials", "allow_insecure_http", "allowed_operations", "writable_contact_fields"})
+_ENV_NAME = re.compile(r"[A-Z_][A-Z0-9_]{0,127}\Z")
+_IDENTITY_NAME = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}\Z")
+_CREDENTIAL_KEYS = frozenset({"token_env", "allowed_account_ids"})
+
+
+def _env_name(value: object, label: str) -> str:
+    if not isinstance(value, str) or not _ENV_NAME.fullmatch(value):
+        raise ConfigurationError(f"{label} deve ser nome de variável de ambiente válido.")
+    return value
+
+
+@dataclass(frozen=True, slots=True)
+class Credential:
+    name: str
+    token_env: str
+    account_ids: frozenset[int]
+
+
+def _credentials(raw: object) -> Mapping[str, Credential]:
+    if not isinstance(raw, Mapping) or not raw:
+        raise ConfigurationError("credentials deve conter ao menos uma identidade autorizada.")
+    entries = {}
+    used_env_names = set()
+    for name, value in raw.items():
+        if not isinstance(name, str) or not _IDENTITY_NAME.fullmatch(name):
+            raise ConfigurationError("Nome de identidade inválido em credentials.")
+        if not isinstance(value, Mapping) or set(value) - _CREDENTIAL_KEYS:
+            raise ConfigurationError("Credencial contém campos desconhecidos ou formato inválido.")
+        env_name = _env_name(value.get("token_env"), f"token_env de {name}")
+        ids = value.get("allowed_account_ids")
+        if (not isinstance(ids, list) or not ids or
+                any(type(i) is not int or i <= 0 for i in ids) or
+                len(set(ids)) != len(ids)):
+            raise ConfigurationError("allowed_account_ids da credencial deve conter IDs positivos únicos.")
+        if env_name in used_env_names:
+            raise ConfigurationError("Duas identidades não podem referenciar o mesmo token_env.")
+        entries[name] = Credential(name, env_name, frozenset(ids))
+        used_env_names.add(env_name)
+    return MappingProxyType(entries)
+
 
 
 def _url(value: object, allow_http: bool) -> str:
@@ -55,7 +97,9 @@ def _flags(raw: object, allowed: frozenset[str], name: str) -> frozenset[str]:
 
 @dataclass(frozen=True, slots=True)
 class PluginConfig:
-    base_url: str
+    base_url_env: str
+    credentials: Mapping[str, Credential]
+    allow_insecure_http: bool
     operations: frozenset[str]
     writable_fields: frozenset[str]
 
@@ -68,7 +112,10 @@ def parse_config(raw: object) -> PluginConfig:
     allow = raw.get("allow_insecure_http", False)
     if type(allow) is not bool:
         raise ConfigurationError("allow_insecure_http deve ser booleano.")
-    url = _url(raw.get("base_url"), allow)
+    url_env = _env_name(raw.get("base_url_env"), "base_url_env")
+    credentials = _credentials(raw.get("credentials"))
+    if url_env in {credential.token_env for credential in credentials.values()}:
+        raise ConfigurationError("base_url_env não pode ser igual a token_env.")
     ops = _flags(raw.get("allowed_operations", {}), OPERATIONS, "allowed_operations")
     fields = _flags(raw.get("writable_contact_fields", {}), WRITABLE_FIELDS, "writable_contact_fields")
-    return PluginConfig(url, ops, fields)
+    return PluginConfig(url_env, credentials, allow, ops, fields)

@@ -1,6 +1,6 @@
 [project]
 name = "hermes-chatwoot-plugin"
-version = "0.2.0rc1"
+version = "0.2.0rc2"
 description = "Hermes native tools backed by ital-leste-chatwoot-client"
 requires-python = ">=3.11"
 # BLOQUEIO DISTRIBUICAO: pacote cliente ainda nao publicado em indice e licencia pendente.
