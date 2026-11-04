@@ -1,10 +1,11 @@
 [project]
 name = "hermes-chatwoot-plugin"
-version = "0.1.0"
-description = "Ferramentas nativas do Hermes para operar a Application API do Chatwoot."
+version = "0.2.0rc1"
+description = "Hermes native tools backed by ital-leste-chatwoot-client"
 requires-python = ">=3.11"
-# Dependencia externa: instalacao documentada no README enquanto o cliente nao
-# dispuser de uma distribuicao versionada acessivel a Hermes PM.
+# BLOQUEIO DISTRIBUICAO: pacote cliente ainda nao publicado em indice e licencia pendente.
+# Ate publicacao, instalar chatwoot_client separadamente no Python do Hermes.
+# Nao usar dependencias por URL Git aqui: Hermes PM nao as suporta.
 dependencies = []
 
 [project.optional-dependencies]

@@ -1,8 +1,6 @@
-"""Entrada oficial do plugin Hermes Chatwoot Tools."""
+"""Entrada pública do plugin nativo do Hermes."""
 from __future__ import annotations
 
-# O carregador do Hermes importa este diretório como pacote. Pytest pode importar
-# o __init__.py da raiz sem contexto de pacote durante a descoberta dos testes.
 if __package__:
     from .chatwoot_tools.service import ToolService
     from .schemas import SCHEMAS
@@ -10,12 +8,16 @@ if __package__:
 
 
 def register(ctx) -> None:
-    """Registra ferramentas estáticas; autorização é avaliada a cada execução."""
-    service = ToolService(lambda: ctx.get_config("installations", default={}))
-    for name, tool_schema in SCHEMAS.items():
-        ctx.register_tool(
-            name=name,
-            toolset="chatwoot_tools",
-            schema=tool_schema,
-            handler=handler_for(service, name),
-        )
+    """Registra ferramentas: sem conexão HTTP e sem acesso a segredos no startup."""
+    def settings():
+        return {
+            "base_url": ctx.get_config("base_url", default=None),
+            "allow_insecure_http": ctx.get_config("allow_insecure_http", default=False),
+            "allowed_operations": ctx.get_config("allowed_operations", default={}),
+            "writable_contact_fields": ctx.get_config("writable_contact_fields", default={}),
+        }
+
+    service = ToolService(settings)
+    for name, schema in SCHEMAS.items():
+        ctx.register_tool(name=name, toolset="chatwoot_tools", schema=schema,
+                          handler=handler_for(service, name))

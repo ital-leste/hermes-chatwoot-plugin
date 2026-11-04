@@ -1,4 +1,3 @@
-"""Falhas estáveis do adaptador, sem mensagens que exponham segredos."""
 from __future__ import annotations
 
 
@@ -24,7 +23,3 @@ class ArgumentsError(PluginError):
 
 class CredentialsError(PluginError):
     code = "credentials_unavailable"
-
-
-class DependencyError(PluginError):
-    code = "client_unavailable"

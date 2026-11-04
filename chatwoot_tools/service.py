@@ -1,91 +1,95 @@
-"""Executa operações nomeadas usando exclusivamente o CWClient público."""
+"""Orquestra autorização, conexão confiável e operações tipadas do cliente."""
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from typing import Any
 import json
 
-from .client_factory import create_client, resolve_secret
-from .config import parse_installations
-from .errors import (
-    ArgumentsError, AuthorizationError, ConfigurationError, CredentialsError,
-    DependencyError, PluginError,
-)
-from .permissions import authorize, verify_conversation
-
+from .config import parse_config, WRITABLE_FIELDS
+from .connection import TOKEN_ENV, create_client, resolve_secret
+from .errors import ArgumentsError, CredentialsError, PluginError
+from .permissions import require_fields, require_operation
+from .validators import conversation_identity, contact_identity
+from .operations import contacts, conversations, labels, messages
 
 TOOLS_TO_OPERATIONS = {
     "chatwoot_get_conversation": "conversation.read",
+    "chatwoot_list_conversations": "conversation.list",
     "chatwoot_list_messages": "messages.read",
     "chatwoot_send_public_message": "messages.send_public",
     "chatwoot_send_private_note": "messages.send_private",
     "chatwoot_set_status": "conversation.status.update",
     "chatwoot_add_labels": "conversation.labels.add",
     "chatwoot_remove_labels": "conversation.labels.remove",
+    "chatwoot_search_contacts": "contacts.search",
+    "chatwoot_get_contact": "contacts.read",
+    "chatwoot_get_contact_conversations": "contacts.conversations.read",
+    "chatwoot_update_contact": "contacts.update",
 }
-_BASE = {"installation", "account_id", "conversation_id"}
-_OPTIONAL = {
-    "chatwoot_get_conversation": set(),
-    "chatwoot_list_messages": {"before", "after"},
-    "chatwoot_send_public_message": {"content"},
-    "chatwoot_send_private_note": {"content"},
-    "chatwoot_set_status": {"status", "snoozed_until"},
-    "chatwoot_add_labels": {"labels"},
-    "chatwoot_remove_labels": {"labels"},
-}
-_REQUIRED = {
-    "chatwoot_get_conversation": set(),
-    "chatwoot_list_messages": set(),
-    "chatwoot_send_public_message": {"content"},
-    "chatwoot_send_private_note": {"content"},
-    "chatwoot_set_status": {"status"},
-    "chatwoot_add_labels": {"labels"},
-    "chatwoot_remove_labels": {"labels"},
-}
-_WRITES = frozenset({
-    "messages.send_public", "messages.send_private", "conversation.status.update",
-    "conversation.labels.add", "conversation.labels.remove",
+_CONVERSATION = frozenset({
+    "chatwoot_get_conversation", "chatwoot_list_messages", "chatwoot_send_public_message",
+    "chatwoot_send_private_note", "chatwoot_set_status", "chatwoot_add_labels", "chatwoot_remove_labels",
 })
+_CONTACT = frozenset({"chatwoot_get_contact", "chatwoot_get_contact_conversations", "chatwoot_update_contact"})
+_WRITES = frozenset({"messages.send_public", "messages.send_private", "conversation.status.update", "conversation.labels.add", "conversation.labels.remove", "contacts.update"})
+_OPTIONS = {
+    "chatwoot_get_conversation": (set(), set()),
+    "chatwoot_list_conversations": ({"status","q","page"}, set()),
+    "chatwoot_list_messages": ({"before", "after"}, set()),
+    "chatwoot_send_public_message": ({"content"}, {"content"}),
+    "chatwoot_send_private_note": ({"content"}, {"content"}),
+    "chatwoot_set_status": ({"status","snoozed_until"}, {"status"}),
+    "chatwoot_add_labels": ({"labels"}, {"labels"}),
+    "chatwoot_remove_labels": ({"labels"}, {"labels"}),
+    "chatwoot_search_contacts": ({"q", "page"}, {"q"}),
+    "chatwoot_get_contact": (set(), set()),
+    "chatwoot_get_contact_conversations": (set(), set()),
+    "chatwoot_update_contact": ({"fields"}, {"fields"}),
+}
 
 
 def _arguments(tool: str, raw: object) -> dict[str, Any]:
-    if not isinstance(raw, Mapping) or any(not isinstance(k, str) for k in raw):
-        raise ArgumentsError("Os argumentos devem ser objeto JSON.")
+    if not isinstance(raw, Mapping) or any(type(k) is not str for k in raw):
+        raise ArgumentsError("Argumentos devem ser objeto JSON.")
     data = dict(raw)
-    if (set(data) - _BASE - _OPTIONAL[tool] or
-            not _BASE.issubset(data) or not _REQUIRED[tool].issubset(data)):
+    base = {"account_id", "inbox_id"}
+    if tool in _CONVERSATION:
+        base.add("conversation_id")
+    if tool in _CONTACT:
+        base.add("contact_id")
+    opt, req = _OPTIONS[tool]
+    if not (base | req).issubset(data) or set(data) - base - opt:
         raise ArgumentsError("Argumentos ausentes ou não reconhecidos.")
-    alias = data["installation"]
-    if not isinstance(alias, str) or not alias.strip():
-        raise ArgumentsError("installation deve ser texto não vazio.")
-    for key in ("account_id", "conversation_id"):
+    for key in base:
         if type(data[key]) is not int or data[key] <= 0:
             raise ArgumentsError(f"{key} deve ser inteiro positivo.")
-    if tool == "chatwoot_list_messages":
-        for key in ("before", "after"):
-            if key in data and (type(data[key]) is not int or data[key] < 0):
-                raise ArgumentsError(f"{key} deve ser inteiro não negativo.")
-    if tool in ("chatwoot_send_public_message", "chatwoot_send_private_note"):
-        if not isinstance(data["content"], str) or not data["content"].strip():
-            raise ArgumentsError("content deve ser texto não vazio.")
-    if tool == "chatwoot_set_status":
-        if type(data["status"]) is not str or data["status"] not in {"open", "pending", "resolved", "snoozed"}:
-            raise ArgumentsError("status deve ser open, pending, resolved ou snoozed.")
-        if "snoozed_until" in data:
-            if data["status"] != "snoozed" or type(data["snoozed_until"]) is not int or data["snoozed_until"] <= 0:
-                raise ArgumentsError("snoozed_until exige status snoozed e timestamp positivo.")
-    if tool in ("chatwoot_add_labels", "chatwoot_remove_labels"):
-        labels = data["labels"]
-        if not isinstance(labels, list) or not labels or any(not isinstance(v, str) or not v.strip() for v in labels):
+    for key in ("page", "before", "after", "snoozed_until"):
+        if key in data and (type(data[key]) is not int or data[key] < (0 if key in ("before", "after") else 1)):
+            raise ArgumentsError(f"{key} deve ser inteiro válido.")
+    for key in ("q", "content"):
+        if key in data and (not isinstance(data[key], str) or not data[key].strip()):
+            raise ArgumentsError(f"{key} deve ser texto não vazio.")
+    if "status" in data:
+        choices = {"all", "open", "pending", "resolved", "snoozed"} if tool == "chatwoot_list_conversations" else {"open", "pending", "resolved", "snoozed"}
+        if type(data["status"]) is not str or data["status"] not in choices:
+            raise ArgumentsError("Status inválido.")
+    if "snoozed_until" in data and data.get("status") != "snoozed":
+        raise ArgumentsError("snoozed_until requer status snoozed.")
+    if "labels" in data:
+        v = data["labels"]
+        if not isinstance(v, list) or not v or any(not isinstance(x, str) or not x.strip() for x in v):
             raise ArgumentsError("labels deve ser lista não vazia de strings.")
+    if "fields" in data:
+        fields = data["fields"]
+        if not isinstance(fields, Mapping) or not fields or any(type(k) is not str or k not in WRITABLE_FIELDS for k in fields):
+            raise ArgumentsError("fields contém campo desconhecido ou está vazio.")
+        data["fields"] = dict(fields)
     return data
 
 
 class ToolService:
     def __init__(
-        self,
-        settings_provider: Callable[[], object],
-        *,
+        self, settings_provider: Callable[[], object], *,
         secret_provider: Callable[[str], str | None] = resolve_secret,
         client_factory: Callable[[str, str], Any] = create_client,
     ) -> None:
@@ -94,77 +98,79 @@ class ToolService:
         self.client_factory = client_factory
 
     def execute(self, tool: str, raw: object) -> str:
-        """A interface de ferramenta Hermes retorna JSON textual, mesmo nos erros."""
         operation = TOOLS_TO_OPERATIONS.get(tool)
         if operation is None:
-            return self._failure("unknown_tool", "Ferramenta não reconhecida.")
+            return self._error("unknown_tool", "Ferramenta desconhecida.")
+        write_started = False
         try:
             data = _arguments(tool, raw)
-            installations = parse_installations(self.settings_provider())
-            alias = data["installation"]
-            installation = installations.get(alias)
-            if installation is None:
-                raise AuthorizationError("Instalação não configurada.")
-            authorize(installation, operation, data["account_id"])
-            token = self.secret_provider(installation.token_env)
+            cfg = parse_config(self.settings_provider())
+            require_operation(cfg, operation)
+            if tool == "chatwoot_update_contact":
+                require_fields(cfg, data["fields"])
+            token = self.secret_provider(TOKEN_ENV)
             if not isinstance(token, str) or not token.strip():
-                raise CredentialsError("Credencial da instalação indisponível.")
-            # Cada chamada usa a instalação resolvida, sem sessão global que possa
-            # transportar credenciais ou estado de outra instalação.
-            with self.client_factory(installation.base_url, token.strip()) as client:
-                result = self._execute_client(client, tool, data, installation)
-            return json.dumps({
-                "success": True, "installation": alias, "operation": operation,
-                "data": result,
-            }, ensure_ascii=False, allow_nan=False)
-        except PluginError as exc:
-            return self._failure(exc.code, str(exc))
-        except (ValueError, TypeError) as exc:
-            # Erros de contrato do cliente não devem conter dados enviados.
-            return self._failure("invalid_arguments", "A operação foi rejeitada pelo contrato Python.")
+                raise CredentialsError("Token Chatwoot indisponível no perfil Hermes.")
+            with self.client_factory(cfg.base_url, token.strip()) as cw:
+                aid, iid = data["account_id"], data["inbox_id"]
+                if tool in _CONVERSATION:
+                    # Confere sempre conta, inbox e conversa, independentemente de allowlists.
+                    conversation = conversation_identity(cw, aid, iid, data["conversation_id"])
+                    if tool == "chatwoot_get_conversation":
+                        result = conversation
+                    else:
+                        if operation in _WRITES:
+                            write_started = True
+                        result = self._run(cw, tool, data)
+                elif tool in _CONTACT:
+                    contact = contact_identity(cw, aid, iid, data["contact_id"])
+                    if tool == "chatwoot_get_contact":
+                        result = contact
+                    else:
+                        if operation in _WRITES:
+                            write_started = True
+                        result = self._run(cw, tool, data)
+                else:
+                    result = self._run(cw, tool, data)
+            return json.dumps({"success": True, "operation": operation, "data": result}, ensure_ascii=False, allow_nan=False)
+        except PluginError as e:
+            return self._error(e.code, str(e))
+        except (ValueError, TypeError):
+            return self._error("invalid_arguments", "A operação foi rejeitada pelo contrato Python.")
         except (ModuleNotFoundError, ImportError):
-            return self._failure("client_unavailable", "O pacote chatwoot_client não está instalado no runtime Hermes.")
-        except Exception as exc:
-            # Mensagens de exceções HTTP podem conter URLs, headers e dados pessoais.
-            status = getattr(exc, "status_http", None)
+            return self._error("client_unavailable", "O pacote chatwoot_client não está disponível no runtime Hermes.")
+        except Exception as e:
+            # Não devolver corpo, headers, URL ou token ao modelo, mesmo em exceções.
+            status = getattr(e, "status_http", None)
             if type(status) is int and 100 <= status <= 599:
-                return self._failure("chatwoot_api_error", "A API Chatwoot rejeitou a operação.", status_http=status)
-            if operation in _WRITES:
-                return self._failure("outcome_unknown", "Falha na operação de escrita; não repetir automaticamente.")
-            return self._failure("execution_error", "Falha ao executar a operação Chatwoot.")
+                return self._error("chatwoot_api_error", "A API Chatwoot rejeitou a operação.", status_http=status)
+            if write_started:
+                return self._error("outcome_unknown", "Falha após início da escrita; reconciliar antes de repetir.")
+            return self._error("execution_error", "Falha ao consultar a API Chatwoot.")
 
     @staticmethod
-    def _failure(code: str, message: str, **extras: Any) -> str:
-        return json.dumps({"success": False, "error": {"code": code, "message": message, **extras}}, ensure_ascii=False)
+    def _error(code: str, message: str, **extras: Any) -> str:
+        return json.dumps({"success": False, "error": {"code":code,"message":message,**extras}}, ensure_ascii=False)
 
     @staticmethod
-    def _execute_client(client: Any, tool: str, data: dict[str, Any], installation: Any) -> Any:
-        aid, cid = data["account_id"], data["conversation_id"]
-        conversation: Any = None
-        # Se há restrição de inbox, todos os acessos ao recurso precisam
-        # comprovar sua associação real, não apenas um inbox_id do agente.
-        if installation.inbox_ids is not None or tool == "chatwoot_get_conversation":
-            conversation = verify_conversation(
-                client.conversations.get(aid, cid), account_id=aid,
-                conversation_id=cid, installation=installation,
-            )
-        if tool == "chatwoot_get_conversation":
-            return conversation
+    def _run(cw: Any, tool: str, data: dict[str, Any]) -> Any:
+        aid, iid = data["account_id"], data["inbox_id"]
+        cid = data.get("conversation_id")
+        contact_id = data.get("contact_id")
+        if tool == "chatwoot_list_conversations":
+            return conversations.list_conversations(cw, aid, iid, **{k:data[k] for k in ("status","q","page") if k in data})
         if tool == "chatwoot_list_messages":
-            return client.messages.list(aid, cid, **{
-                k: data[k] for k in ("before", "after") if k in data
-            })
+            return messages.list_messages(cw, aid, cid, **{k:data[k] for k in ("before","after") if k in data})
         if tool in ("chatwoot_send_public_message", "chatwoot_send_private_note"):
-            from chatwoot_client import TextMessage
-            return client.messages.send_text(aid, cid, TextMessage(
-                data["content"], private=(tool == "chatwoot_send_private_note")
-            ))
+            return messages.send(cw, aid, cid, data["content"], tool == "chatwoot_send_private_note")
         if tool == "chatwoot_set_status":
-            from chatwoot_client import ConversationStatus
-            kw = {"snoozed_until": data["snoozed_until"]} if "snoozed_until" in data else {}
-            return client.conversations.set_status(aid, cid, ConversationStatus(data["status"]), **kw)
-        if tool == "chatwoot_add_labels":
-            return client.conversation_labels.add(aid, cid, data["labels"])
-        if tool == "chatwoot_remove_labels":
-            return client.conversation_labels.remove(aid, cid, data["labels"])
-        raise ArgumentsError("Ferramenta não implementada.")
+            return conversations.set_status(cw, aid, cid, data["status"], data.get("snoozed_until"))
+        if tool in ("chatwoot_add_labels", "chatwoot_remove_labels"):
+            return labels.modify(cw, aid, cid, data["labels"], remove=tool=="chatwoot_remove_labels")
+        if tool == "chatwoot_search_contacts":
+            return contacts.search(cw, aid, iid, data["q"], data.get("page"))
+        if tool == "chatwoot_get_contact_conversations":
+            return contacts.list_conversations(cw, aid, iid, contact_id)
+        if tool == "chatwoot_update_contact":
+            return contacts.update(cw, aid, contact_id, data["fields"])
+        raise ArgumentsError("Operação não implementada.")

@@ -1,44 +1,48 @@
-# Catálogo de ferramentas v0.1
+# Contratos das ferramentas v0.2.0rc1
 
-Todas as ferramentas exigem os argumentos `installation: str`, `account_id: int` e `conversation_id: int`, com IDs positivos. Não aceitam `base_url`, `token` ou outros argumentos não documentados. O cliente Python fornece os contratos de domínio; o plugin não cria modelos alternativos de saída do Chatwoot.
+## Identidade
 
-| Ferramenta | Argumentos adicionais | Operação do pacote `chatwoot_client` |
+O plugin possui **uma conexão Chatwoot por perfil Hermes**. Não existe `installation`, `base_url` ou `api_token` como argumento das ferramentas. Toda ferramenta exige `account_id: int>0` e `inbox_id: int>0`.
+
+Ferramentas de conversa também exigem `conversation_id: int>0`. Ferramentas de contato individual exigem `contact_id: int>0`. Os campos são obrigatórios inclusive quando há apenas uma conta/inbox no servidor.
+
+| Ferramenta | Argumentos adicionais | Método do cliente |
 | --- | --- | --- |
-| `chatwoot_get_conversation` | — | `conversations.get(account_id, conversation_id)` |
-| `chatwoot_list_messages` | `before?: int>=0`, `after?: int>=0` | `messages.list(account_id, conversation_id, before=..., after=...)` |
-| `chatwoot_send_public_message` | `content: str` não vazio | `messages.send_text(account_id, conversation_id, TextMessage(content))` |
-| `chatwoot_send_private_note` | `content: str` não vazio | `messages.send_text(account_id, conversation_id, TextMessage(content, private=True))` |
-| `chatwoot_set_status` | `status: open\|pending\|resolved\|snoozed`; `snoozed_until?: int>0` somente com `snoozed` | `conversations.set_status(..., ConversationStatus(...), snoozed_until=...)` |
-| `chatwoot_add_labels` | `labels: list[str]` não vazia | `conversation_labels.add(account_id, conversation_id, labels)` |
-| `chatwoot_remove_labels` | `labels: list[str]` não vazia | `conversation_labels.remove(account_id, conversation_id, labels)` |
+| `chatwoot_get_conversation` | `conversation_id` | `conversations.get` com guarda obrigatória |
+| `chatwoot_list_conversations` | `status?`, `q?`, `page?` | `conversations.list(..., inbox_id=...)`; valida todos os itens |
+| `chatwoot_list_messages` | `conversation_id`, `before?`, `after?` | `messages.list` após guarda da tríade |
+| `chatwoot_send_public_message` | `conversation_id`, `content` | `messages.send_text(..., TextMessage(content))` |
+| `chatwoot_send_private_note` | `conversation_id`, `content` | `messages.send_text(..., TextMessage(content, private=True))` |
+| `chatwoot_set_status` | `conversation_id`, `status`, `snoozed_until?` | `conversations.set_status` com enum tipado |
+| `chatwoot_add_labels` | `conversation_id`, `labels: list[str]` | `conversation_labels.add` |
+| `chatwoot_remove_labels` | `conversation_id`, `labels: list[str]` | `conversation_labels.remove` |
+| `chatwoot_search_contacts` | `q: str`, `page?` | `contacts.search`, conferência individual por inbox |
+| `chatwoot_get_contact` | `contact_id` | `contacts.get`, conferência de vínculo com inbox |
+| `chatwoot_get_contact_conversations` | `contact_id` | `contacts.list_conversations`, restringe itens à inbox |
+| `chatwoot_update_contact` | `contact_id`, `fields: dict` | `contacts.update` com `Contact(**fields)` tipado |
 
-O campo `snoozed_until` é um timestamp Unix positivo. A regra de `ConversationStatus` pertence ao cliente tipado. `before=0` e `after=0` são cursores aceitos pelo contrato HTTP do cliente.
+Todos os resultados bem-sucedidos são texto JSON com `success`, `operation`, `data`; o valor de `data` preserva os campos nativos retornados pela API (exceto exclusão de candidatos de outras inboxes nas buscas). O plugin não garante entrega do canal externo após publicação HTTP.
 
-## Resultado bem-sucedido
-
-Os handlers devolvem **texto JSON** (exigência do registro de ferramentas Hermes). Exemplo meramente ilustrativo:
-
-```json
-{
-  "success": true,
-  "installation": "principal",
-  "operation": "messages.send_public",
-  "data": {"id": 91}
-}
-```
-
-`data` é a resposta **nativa** recebida do método da biblioteca Python, e pode ser objeto, lista ou `null` quando o endpoint não devolve corpo. Nenhum objeto `httpx.Response` é retornado. O envelope do plugin não deve ser interpretado como confirmação de entrega por WhatsApp.
-
-## Resultado negado ou falho
+### Exemplo de publicação
 
 ```json
-{"success": false, "error": {"code": "operation_denied", "message": "Operação não autorizada nesta instalação."}}
+{"account_id":1,"inbox_id":4,"conversation_id":482,"content":"Bom dia!"}
 ```
 
-Códigos previstos: `invalid_arguments`, `invalid_configuration`, `operation_denied`, `scope_denied`, `credentials_unavailable`, `client_unavailable`, `chatwoot_api_error`, `execution_error`, `outcome_unknown`, `unknown_tool`.
+### Exemplo de busca de contato
 
-Não são propagados tokens, headers, bodies HTTP nem mensagens de exceções de bibliotecas ao LLM. `chatwoot_api_error` pode incluir `status_http`. Erros sem status durante escrita são `outcome_unknown` e devem ser reconciliados antes de qualquer retentativa, pois o servidor pode já ter concluído a ação.
+```json
+{"account_id":1,"inbox_id":4,"q":"Maria","page":1}
+```
 
-## Operações não incluídas
+### Exemplo de edição de contato
 
-O cliente possui dezenas de outros recursos, mas a v0.1 **não** expõe mídias, contatos, criação de conversas, usuários, campanhas, webhooks, administração, atualização genérica nem exclusões. Não existe ferramenta genérica de acesso irrestrito à API; novos recursos devem ganhar esquema e permissão explícitos.
+```json
+{"account_id":1,"inbox_id":4,"contact_id":25,"fields":{"name":"Maria","phone_number":"+5511999999999"}}
+```
+
+Se `email` não estiver autorizado, a combinação `{"name":"Maria","email":"..."}` será rejeitada integralmente antes da escrita. `phone_number` precisa atender ao formato E.164 validado por `Contact` do cliente Python.
+
+### Erros
+
+`invalid_configuration`, `operation_denied`, `scope_denied`, `invalid_arguments`, `credentials_unavailable`, `client_unavailable`, `chatwoot_api_error`, `execution_error`, `outcome_unknown`, `unknown_tool`. Corpos de exceção e segredos não retornam ao modelo. `outcome_unknown` só é usado após o início de uma tentativa de escrita; consultas de guarda com falha não o geram.

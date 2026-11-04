@@ -1,1 +1,1 @@
-"""Domínio interno do plugin Hermes; não implementa endpoints HTTP."""
+"""Núcleo independente de transporte e de lógica do consumidor."""

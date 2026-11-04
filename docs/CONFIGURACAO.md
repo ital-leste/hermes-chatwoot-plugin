@@ -1,76 +1,56 @@
-# Configuração e permissões
+# Configuração e segurança
 
-O plugin lê as configurações do seu próprio namespace via `ctx.get_config("installations")`; não busca configurações globalmente nem lê `.env` por conta própria. O catálogo abaixo é **a configuração suportada na v0.1**.
+O plugin usa o namespace nativo `plugins.entries.chatwoot-tools.settings` do Hermes. Não há instalações nomeadas nem `.env` dentro do plugin.
 
 ```yaml
 plugins:
-  enabled: [chatwoot-tools]
   entries:
     chatwoot-tools:
       settings:
-        installations:
-          principal:
-            base_url: "https://chatwoot.exemplo.com"
-            token_env: "HERMES_CHATWOOT_PRINCIPAL_TOKEN"
-            allowed_account_ids: [17]
-            allowed_inbox_ids: [4, 6]
-            allowed_operations:
-              conversation.read: true
-              messages.read: true
-              messages.send_public: true
-              # messages.send_private: true
-              conversation.status.update: true
-              conversation.labels.add: true
-              conversation.labels.remove: true
+        base_url: "https://chatwoot.exemplo.com"
+        allow_insecure_http: false
+        allowed_operations:
+          conversation.read: true
+          conversation.list: true
+          messages.read: true
+          messages.send_public: true
+          # messages.send_private: true
+          conversation.status.update: true
+          conversation.labels.add: true
+          conversation.labels.remove: true
+          contacts.search: true
+          contacts.read: true
+          contacts.conversations.read: true
+          contacts.update: true
+        writable_contact_fields:
+          name: true
+          phone_number: true
+          # email: true
+          # identifier: true
+          # blocked: true
+          # avatar_url: true
+          # additional_attributes: true
+          # custom_attributes: true
 ```
 
-### Campos da instalação
+### URL e credencial
 
-| Nome | Obrigatório | Semântica |
-| --- | --- | --- |
-| `base_url` | Sim | URL base http(s) sem credenciais, fragmento ou query. HTTPS recomendado fora do loopback. |
-| `token_env` | Sim | Nome da credencial resolvida com `agent.secret_scope.get_secret`. |
-| `allowed_account_ids` | Sim | Lista não vazia de inteiros positivos, únicos. |
-| `allowed_inbox_ids` | Não | Se ausente, nenhuma restrição adicional; se `[]`, todas as conversas bloqueadas; se não vazia, guarda real com `conversations.get()`. |
-| `allowed_operations` | Não | Mapa `permissão: true|false`; ausência permite zero operações. |
+- `base_url`: configura a instalação atendida por este perfil Hermes. URL HTTPS é obrigatória por padrão fora de loopback (`localhost`, `127.0.0.0/8`, `::1`).
+- `allow_insecure_http`: exceção explícita `true` para HTTP numa rede privada confiável. Nunca inferir segurança somente do hostname.
+- `api_token`: no `plugin.yaml`, campo `type: secret` associado a `CHATWOOT_API_TOKEN`. O segredo **não** é armazenado como valor no `config.yaml`. Deve ser configurado via gerenciador de segredos ou ambiente protegido do perfil, e resolvido por `agent.secret_scope.get_secret()`.
+- Um segundo perfil Hermes pode ter URL e token próprios. Em um único processo com perfis que compartilham o ambiente do SO, variáveis de mesmo nome podem não estar isoladas; validar o runtime. Para isolamento forte, operar perfis em ambientes/processos segregados.
 
-Cada instalação é um alias `[A-Za-z][A-Za-z0-9_-]*` com até 64 caracteres. Nomes de credenciais seguem o padrão de variáveis de ambiente maiúsculas. A ausência de credencial bloqueia a execução, mas não impede o registro estático das ferramentas.
+### Autorização
 
-### Operações da v0.1
+- Toda operação ausente ou declarada `false` é negada; nomes desconhecidos ou valores não booleanos invalidam toda a configuração.
+- `writable_contact_fields` é uma allowlist independente da permissão `contacts.update`. O plugin rejeita a atualização inteira se qualquer chave solicitada não estiver liberada; não aplica atualizações parciais silenciosamente.
+- A autorização do plugin restringe, mas não substitui, as permissões do token no Chatwoot. A tríade deve ser verificada em cada operação de conversa.
+- Nenhuma ferramenta recebe URL ou token do modelo. Token não aparece em JSON de sucesso/erro nem em exceções devolvidas à LLM.
 
-| Configuração | Ferramenta |
-| --- | --- |
-| `conversation.read` | `chatwoot_get_conversation` |
-| `messages.read` | `chatwoot_list_messages` |
-| `messages.send_public` | `chatwoot_send_public_message` |
-| `messages.send_private` | `chatwoot_send_private_note` |
-| `conversation.status.update` | `chatwoot_set_status` |
-| `conversation.labels.add` | `chatwoot_add_labels` |
-| `conversation.labels.remove` | `chatwoot_remove_labels` |
+### HTTP e HTTPS
 
-Comentar/remover uma linha, ou trocar `true` por `false`, nega a operação. Por exemplo, `# messages.send_private: true` é equivalente a não declará-la. Valores não booleanos (`"true"`, `1`, `null` etc.) são erros. **Chaves desconhecidas são erro de configuração**, não passam silenciosamente. Não existe flag coringa de acesso total.
+`https://...` é permitido. `http://127.0.0.1:3000` e `http://[::1]:3000` são permitidos sem exceção. `http://chatwoot-interno:3000` exige `allow_insecure_http: true`. O operador é responsável por TLS, VPN e controle de acesso à rede.
 
-### Contatos e campos de atualização
+### Retorno integral
 
-Campos como `name`, `email` e `phone_number` **não podem ser escritos pela v0.1**, pois ainda não há ferramentas de contatos. Em uma versão futura, a política seguirá a mesma presença explícita de `true`:
-
-```yaml
-# Exemplo FUTURO — ainda NÃO incluir em uma configuração v0.1:
-# allowed_operations:
-#   contacts.update: true
-# writable_contact_fields:
-#   name: true
-#   phone_number: true
-#   email: false
-```
-
-A configuração da v0.1 rejeita `contacts.update` e `writable_contact_fields` como chaves ainda não suportadas. Assim, ninguém confundirá uma futura intenção declarativa com autorização implementada.
-
-### Garantias e limites
-
-- O agente não escolhe `base_url`, `token_env` ou valores de token em tool calls; somente `installation` nomeia um destino configurado.
-- O Chatwoot também aplica as permissões reais associadas ao token. As políticas do plugin **restringem**, não ampliam, essas permissões.
-- Uma inbox permitida não prova que a conversa era o destinatário pretendido. O consumidor define essa lógica.
-- Existe uma pequena janela entre o GET de guarda e a escrita; essa verificação não é transacional. O token deve ter privilégio mínimo e o consumidor deve aplicar suas próprias garantias quando precisar de exclusividade.
-- O token é retornado apenas ao construtor de `CWClient`; não é exposto ao modelo, ao JSON de sucesso ou a logs do plugin.
-- Alterações de configuração são validadas na execução seguinte; reinicialização do Hermes pode ser necessária para atualizar configurações carregadas pelo gateway, conforme a versão do framework.
+O plugin preserva o JSON retornado pelo cliente nos resultados de leitura/publicação. Em buscas restritas à inbox, retorna apenas os recursos cuja associação foi comprovada, com os **campos originais** preservados. Não há redução por privacidade ou projeção de mensagens/contatos. Tokens, headers e exceções brutas seguem protegidos.

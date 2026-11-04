@@ -1,16 +1,38 @@
 name: chatwoot-tools
-version: 0.1.0
-description: Ferramentas Hermes para a Application API do Chatwoot via chatwoot_client.
+version: 0.2.0-rc.1
+description: Ferramentas para a Application API do Chatwoot via chatwoot_client.
 provides_tools:
   - chatwoot_get_conversation
+  - chatwoot_list_conversations
   - chatwoot_list_messages
   - chatwoot_send_public_message
   - chatwoot_send_private_note
   - chatwoot_set_status
   - chatwoot_add_labels
   - chatwoot_remove_labels
+  - chatwoot_search_contacts
+  - chatwoot_get_contact
+  - chatwoot_get_contact_conversations
+  - chatwoot_update_contact
 config_schema:
-  installations:
+  base_url:
+    type: str
+    required: true
+    label: URL do Chatwoot
+  api_token:
+    type: secret
+    env: CHATWOOT_API_TOKEN
+    required: true
+    label: Token da Application API
+  allow_insecure_http:
+    type: bool
+    default: false
+    description: Permitir HTTP fora do loopback somente para redes controladas.
+  allowed_operations:
     type: dict
     required: true
-    description: Instalacoes nomeadas com URL, token_env, contas, inboxes e operacoes autorizadas.
+    description: Operacoes autorizadas; apenas linhas com true permitem execucao.
+  writable_contact_fields:
+    type: dict
+    required: false
+    description: Campos do contato cuja atualizacao esta autorizada.

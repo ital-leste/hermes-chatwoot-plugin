@@ -1,34 +1,32 @@
-from __future__ import annotations
-
-from pathlib import Path
 import json
+from pathlib import Path
 import yaml
 
 
-def test_manifesto_e_esquemas_sincronizados(plugin):
+def test_manifesto_registro(plugin):
     root=Path(__file__).resolve().parents[1]
-    manifest=yaml.safe_load((root / "plugin.yaml").read_text())
-    assert manifest["name"]=="chatwoot-tools"
-    assert set(manifest["provides_tools"])==set(plugin.SCHEMAS)
-    for key, schema in plugin.SCHEMAS.items():
-        assert key==schema["name"]
+    m=yaml.safe_load((root/"plugin.yaml").read_text())
+    assert set(m["provides_tools"])==set(plugin.SCHEMAS)
+    assert m["config_schema"]["api_token"]["type"]=="secret"
+    assert m["config_schema"]["api_token"]["env"]=="CHATWOOT_API_TOKEN"
+    for name, schema in plugin.SCHEMAS.items():
+        assert schema["name"]==name
+        assert "installation" not in schema["parameters"]["properties"]
         assert schema["parameters"]["additionalProperties"] is False
-        assert {"installation","account_id","conversation_id"}.issubset(schema["parameters"]["required"])
+        assert {"account_id","inbox_id"}.issubset(schema["parameters"]["required"])
+        if "conversation_id" in schema["parameters"]["properties"]:
+            assert "conversation_id" in schema["parameters"]["required"]
 
 
-def test_registro_nativo_e_falha_fechada_sem_config(plugin):
-    class Context:
-        def __init__(self):
-            self.handlers={}
-        def get_config(self, name, default=None):
-            assert name=="installations"
-            return default
+def test_registro_nao_conecta_ao_chatwoot(plugin):
+    class Ctx:
+        handlers={}
+        def get_config(self,key,default=None):return default
         def register_tool(self,*,name,toolset,schema,handler):
             assert toolset=="chatwoot_tools"
-            assert schema["name"]==name
             self.handlers[name]=handler
-    ctx=Context()
+    ctx=Ctx()
     plugin.register(ctx)
-    assert len(ctx.handlers)==7
-    r=json.loads(ctx.handlers["chatwoot_get_conversation"]({"installation":"x","account_id":1,"conversation_id":1}, task_id="test"))
-    assert r["error"]["code"]=="invalid_configuration"
+    assert len(ctx.handlers)==12
+    result=json.loads(ctx.handlers["chatwoot_get_conversation"]({"account_id":17,"inbox_id":4,"conversation_id":482},task_id="sessao1"))
+    assert result["error"]["code"]=="invalid_configuration"

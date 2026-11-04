@@ -1,40 +1,39 @@
-# Plano de homologação da v0.1
+# Homologação v0.2.0rc1
 
-## Testes automatizados sem credenciais
+## Estado
+
+Suite unitária simulada; não equivale a validação Hermes/Chatwoot real. Homologação integrada é obrigatória antes de liberar escrita em produção.
+
+## CI e checagens estáticas
 
 ```bash
-python -m pip install "pytest>=8,<10" "PyYAML>=6,<7"
+python -m pip install 'pytest>=8,<10' 'PyYAML>=6,<7'
 python -m pytest -q
+python -m compileall -q .
 ```
 
-Os testes simulados cobrem: mapa de instalações, URL/token_env válidos, contas/inboxes e permissões separadas, comentário/ausência/`false`, rejeição de nomes de operação desconhecidos, argumentos inválidos antes da rede, consulta de guarda por inbox, nota privada/publicação pública, status tipado, etiquetas, troca de configuração entre chamadas, JSON de saída, classificação de erros e registro dos sete schemas.
+Cobertura: manifesto/12 ferramentas, contexto/segredo sem exposição ao modelo, triade obrigatória, inbox divergente bloqueando escrita, payload nativo, lista/consulta de contatos e associação de inbox, rejeição de campos não liberados, HTTP seguro, comentários/false, timeout de guarda e timeout após escrita, fechamento do cliente e ausência de rede em registro do plugin.
 
-**Limitação:** o `CWClient` e o contexto Hermes são simulados. Esta aprovação demonstra apenas o comportamento local do plugin, não prova a instalação nativa no Hermes, permissões reais do servidor ou chegada de mensagens no canal externo.
+## Teste no Hermes instalado
 
-## Validação estrutural no Hermes
+1. Instalar o cliente correto `ital-leste/chatwoot-client` **no interpretador utilizado pelo Hermes** (dependência temporariamente manual; não instalar um pacote homônimo do PyPI).
+2. Instalar o plugin em ambiente de teste e confirmar `hermes plugins validate .` e `hermes plugins doctor . --ci` no próprio runtime.
+3. Configurar `base_url` e o campo `api_token` de tipo secreto associado a `CHATWOOT_API_TOKEN`; verificar que não aparece em `config.yaml`, ferramenta ou log.
+4. Autorizar inicialmente só `conversation.read`, `conversation.list`, `messages.read`, `contacts.read` e `contacts.search`.
+5. Testar conta, inbox e conversa válidos e divergentes; confirmar ausência de escrita ao divergir.
+6. Pesquisar contatos presentes em uma e em várias inboxes; inspecionar o formato real dos endpoints, especialmente `contact_inboxes` e a lista de conversas.
+7. Confirmar que uma atualização de contato altera o cadastro compartilhado da conta e que a política de campos impede alterações proibidas.
+8. Autorizar notas privadas antes de mensagens públicas; verificar a materialização com clientes de teste.
+9. Testar status, etiquetas e comportamento não atômico de GET+POST.
+10. Validar HTTPS e exceção explícita HTTP numa rede interna controlada.
+11. Validar um segundo perfil Hermes em processo/ambiente separado com outra URL/token e as mesmas IDs internas; confirmar isolamento.
+12. Registrar SHA do plugin/cliente, versões Hermes/Chatwoot, evidências e resultado de cada operação.
 
-Após instalar o plugin em um runtime Hermes que tenha `chatwoot_client` disponível:
+## Gates de promoção
 
-```bash
-# Executar na raiz do diretório de plugin
-hermes plugins validate .
-hermes plugins doctor . --ci
-hermes plugins list
-```
+- CI aprovado (3.11, 3.12, 3.13).
+- Hermes `validate` e `doctor` aprovados em versão alvo, com segredo funcional.
+- Testes de leitura e escrita reais executados e documentados.
+- Biblioteca Chatwoot Client formalmente versionada e publicada em índice acessível, com licença aprovada e dependência do plugin declarada no `pyproject.toml`.
 
-Validar: o nome no manifesto é `chatwoot-tools`; o `register(ctx)` registra exatamente as sete ferramentas; as ferramentas utilizam os schemas oficiais e retornam texto JSON; o plugin habilitado aparece no catálogo. Validar a versão e a compatibilidade do Hermes instalado, inclusive as APIs `ctx.get_config` e `agent.secret_scope.get_secret`.
-
-## Integração real (manual e expressamente autorizada)
-
-1. Configurar URL e token de uma instalação **de teste** com conta e inbox permitidas. Não registrar segredos no repositório ou em logs.
-2. Permitir inicialmente apenas `conversation.read` e `messages.read`: consultar dados e verificar associação real da inbox.
-3. Testar uma segunda instalação com outro alias, outra credencial e IDs coincidentes, conferindo isolamento.
-4. Confirmar negação de conta proibida, inbox proibida, credencial ausente e operação comentada sem publicação.
-5. Autorizar `messages.send_private` em uma conversa de teste, publicar uma nota interna e verificar sua visibilidade.
-6. Autorizar `messages.send_public` somente mediante permissão explícita, enviar texto de teste e consultar sua materialização. **Não presumir entrega final WhatsApp**.
-7. Exercitar estados `open`, `pending`, `resolved` e `snoozed`, incluindo `snoozed_until`, em conversa isolada.
-8. Validar `conversation.labels.add/remove` e observar os riscos de concorrência das chamadas GET + POST.
-9. Em 401/403/404/422, timeout e falhas de conexão, inspecionar o código de erro sem revelar dados e confirmar que não há repetição automática de escrita.
-10. Registrar o SHA do plugin, SHA/versão do cliente, versão Hermes, versão Chatwoot, ambiente e evidências da execução.
-
-**Gates de aceite:** CI verde; `doctor --ci` aprovado no Hermes-alvo; instalação do cliente verificada; operações de leitura reais aprovadas; escritas somente mediante autorização; resultados observados na conversa correta. A v0.1 não deve ser declarada homologada para produção sem os ensaios reais.
+**A publicação da biblioteca e a licença ainda não estão concluídas.** Não declarar a dependência automática nem uso produtivo homologados antes de concluir esses gates.

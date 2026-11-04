@@ -1,59 +1,53 @@
-# Arquitetura — Hermes Chatwoot Plugin v0.1
+# Arquitetura da v0.2.0rc1
 
 ## Objetivo
 
-Prover ferramentas nativas de agente Hermes para a Application API do Chatwoot. O plugin **não** é um pipeline de atendimento, nem um client HTTP alternativo. Toda operação de rede Chatwoot passa pelo pacote externo `chatwoot_client`.
+Uma instalação do plugin por perfil Hermes com conexão Chatwoot definida e protegida **fora do modelo**. Cada ferramenta informa explicitamente `account_id`, `inbox_id` e o ID do recurso quando aplicável. O plugin valida a consistência com a API, respeita permissões declaradas, executa chamadas por meio do `CWClient` e devolve o JSON nativo.
 
 ## Fluxo
 
 ```text
-Hermes Tool Call (installation, account_id, conversation_id, argumentos)
-  -> handler_for() / ToolService.execute()
-  -> validação estrita de argumentos
-  -> ctx.get_config("installations") / parse_installations()
-  -> autorização por operação e conta
-  -> agent.secret_scope.get_secret(token_env)
-  -> CWClient(base_url, token)
-  -> consulta de guarda da inbox (se filtrada)
-  -> chamada pública da biblioteca Python
-  -> resultado JSON nativo dentro do envelope da ferramenta
+Hermes register(ctx)
+  -> lê plugin.yaml e registra 12 schemas/handlers
+  -> NÃO conecta ao Chatwoot no carregamento
+
+Chamada (account_id, inbox_id, conversation_id, dados):
+  -> ToolService valida esquema e configurações do perfil
+  -> verifica allowed_operations / writable_contact_fields
+  -> agent.secret_scope.get_secret("CHATWOOT_API_TOKEN")
+  -> instancia CWClient(base_url, token) com context manager
+  -> consulta conversation / contact_inbox quando necessário
+  -> rejeita recursos associados à inbox errada
+  -> executa método público do chatwoot_client
+  -> devolve JSON integral dos recursos autorizados
+  -> encerra o CWClient
 ```
 
-A URL e o token são selecionados **exclusivamente** pelo alias de configuração. Não há capacidade no catálogo para alterar a configuração ou passar token/URL em ferramenta. Uma instância `CWClient` é aberta e fechada por execução, evitando vazamento de contexto entre instalações e threads. O operador pode ter uma ou N instalações, inclusive diferentes contas e políticas.
+A conexão não possui aliases nem mudanças por sessão. Outro perfil Hermes pode carregar o mesmo código e outra URL/token. Um consumidor mais complexo que alterna conexões por execução precisará de um provedor confiável apropriado ao seu runtime — **não** há seleção dinâmica de servidores por argumento de modelo na v0.2.
 
-## Fronteiras dos módulos
+## Estrutura
 
-| Módulo | Responsabilidade |
+| Módulo | Fronteira |
 | --- | --- |
-| `plugin.yaml` | Manifesto e `config_schema` nativo |
-| `__init__.py` | Registrar ferramentas com `ctx.register_tool(...)` |
-| `schemas.py` | JSON Schema visível para o LLM |
-| `tools.py` | Adapter de handler Hermes com `**kwargs` de contexto |
-| `chatwoot_tools/config.py` | Contrato imutável e validação estrita de instalações |
-| `chatwoot_tools/permissions.py` | Autorizar operação, conta e conferir associação da conversa à inbox |
-| `chatwoot_tools/client_factory.py` | Instanciar `CWClient` e resolver token na API do Hermes |
-| `chatwoot_tools/service.py` | Orquestrar uma chamada e mapear erros para JSON textual |
-| `chatwoot_tools/errors.py` | Códigos próprios do plugin |
+| `plugin.yaml` | Manifesto e esquema de configuração Hermes, incluindo segredo |
+| `__init__.py` | `register(ctx)` sem efeitos HTTP |
+| `schemas.py` | JSON Schemas das 12 ferramentas |
+| `tools.py` | Adaptadores Hermes; não inferem destinatário por `session_id` |
+| `config.py` | Configuração imutável e validação HTTP(S), operações/campos |
+| `connection.py` | Token protegido e construção do cliente externo |
+| `validators.py` | Validação de tríade e vínculo de contatos com inbox |
+| `permissions.py` | Allowlist por operação e campo |
+| `service.py` | Orquestração, lifecycle e erros estáveis |
+| `operations/` | Chamadas públicas da biblioteca por domínio |
 
-Nenhum módulo importa código de `chawoot-hermes-agent`, Evolution API, SQLite ou repositórios externos do produto.
+## Consistência e limites
 
-## Regras funcionais
-
-- Ferramentas registradas **não** significam autorização. O catálogo fica estável; a permissão é conferida para cada execução e instalação.
-- O nome da operação, não o nome do método Python, é a chave de autorização: `messages.send_public`, etc.
-- Configurações ausentes/erradas ou operações desconhecidas falham fechadas. O plugin rejeita propriedades extras fornecidas pelo modelo.
-- Configuração de contas é obrigatória; `allowed_inbox_ids` é opcional. Quando existe, o plugin valida a identidade da conversa e a inbox retornada pela API antes de ler/escrever outros recursos. Essa checagem é uma política estática de escopo, **não** uma prova de destinatário pretendido pelo consumidor.
-- A leitura interna de guarda é permitida mesmo sem `conversation.read` se necessária para implementar uma permissão de escrita restrita por inbox; não retorna esses dados ao agente.
-- Respostas mantêm o corpo JSON nativo em `data`, sem truncar ou normalizar os campos da API. O plugin **não** garante entrega externa nem sucesso de efeitos por apenas receber HTTP 2xx.
-- Etiquetas `add/remove` dependem de leitura seguida de escrita no cliente, sem atomicidade: consumidores precisam ordenar concorrência quando relevante.
-- Não há retry automático: uma falha de transporte em escrita pode significar resultado desconhecido. O consumidor deve reconciliar antes de repetir.
-
-## Limitações deliberadas
-
-O plugin não implementa autorização por sessão, titularidade de conversa, handoff, detecção de duplicidade entre runs, dedupe de mensagens, rastreamento de efeitos, ACL de pessoas ou autorização externa. Esses controles pertencem ao consumidor do plugin.
-
-O catálogo v0.1 contém **sete ferramentas**. Contatos (leitura/criação/atualização), `writable_contact_fields`, mídias e operações administrativas são reservados para ciclos posteriores; não há permissões implícitas para tais endpoints.
-
-## Distribuição
-
-O Hermes oferece dependências Python gerenciadas, mas não admite requisitos por URL Git direta em seu gerenciador. Como a biblioteca cliente ainda não está num índice gerenciado, a v0.1 requer instalação explícita do cliente no runtime Hermes. A release distribuível exige um índice versionado acessível. Esse limite deve ser documentado, não contornado por cópia de código ou import clandestino.
+- `account_id + inbox_id + conversation_id` designa conversa em um servidor determinado. O plugin confere a inbox por leitura da conversa retornada; a API impõe conta pelo caminho e, se houver `account_id` no objeto, o plugin também o compara.
+- `account_id + inbox_id + contact_id` identifica o contato da conta com vínculo comprovável com a inbox; **não** identifica necessariamente uma conversa única.
+- `contacts.search` é um endpoint por conta. Seus candidatos são conferidos por `contact_inboxes` ou histórico de conversas; somente candidatos da inbox solicitada são retornados. Isso altera o conjunto da busca, **não** os campos de cada contato.
+- `contacts.update` modifica o cadastro do contato na conta inteira, inclusive para outras inboxes. A validação da inbox apenas comprova o vínculo de origem.
+- Busca de contatos sem vínculo comprovável pode omitir candidatos legítimos ainda sem histórico/documentação de associação; falha fechada é preferível a exibir recursos de outra inbox.
+- Se um endpoint alterar seu envelope, o plugin falha fechado em vez de inventar identidade. Os retornos precisam ser homologados com o Chatwoot 4.19.0 do consumidor.
+- A tríade pode ser válida e ainda assim diferente da conversa que originou o evento; sessão, destinatário pretendido, deduplicação, handoff e retry ficam a cargo do consumidor.
+- Nenhum hook captura tokens de outro plugin, nenhum `.env` do plugin é lido. Perfil mal isolado do Hermes pode compartilhar variáveis do SO; esse isolamento deve ser verificado.
+- Adição/remoção de etiquetas no cliente é leitura + escrita, não transacional. Não há retry automático de escrita.
