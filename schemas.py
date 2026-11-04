@@ -43,6 +43,15 @@ SCHEMAS = {
     "chatwoot_get_contact": schema("chatwoot_get_contact", "Consultar contato associado à inbox informada.", identity=CONTACT),
     "chatwoot_get_contact_conversations": schema("chatwoot_get_contact_conversations", "Listar conversas de um contato limitadas à inbox indicada.", identity=CONTACT),
     "chatwoot_update_contact": schema("chatwoot_update_contact", "Atualizar somente campos expressamente autorizados no perfil; alteração afeta o contato da conta inteira.", identity=CONTACT, extra={
-        "fields": {"type":"object", "minProperties":1, "description":"Campos de Contact autorizados em writable_contact_fields."},
+        "fields": {"type":"object", "minProperties":1, "additionalProperties":False, "properties":{
+            "name": {"type": ["string", "null"]},
+            "phone_number": {"type": ["string", "null"]},
+            "email": {"type": ["string", "null"]},
+            "identifier": {"type": ["string", "null"]},
+            "blocked": {"type": "boolean"},
+            "avatar_url": {"type": ["string", "null"]},
+            "additional_attributes": {"type": ["object", "null"]},
+            "custom_attributes": {"type": ["object", "null"]}
+        }, "description":"Campos de Contact autorizados em writable_contact_fields; objetos de atributos mantêm chaves livres."},
     }, required=("fields",)),
 }

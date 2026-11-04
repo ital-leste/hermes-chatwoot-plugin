@@ -2,7 +2,7 @@
 
 Plugin nativo para o Hermes Agent que disponibiliza ferramentas da Application API do Chatwoot por meio da biblioteca Python externa `chatwoot_client`. Não contém regras de negócio ou parâmetros de uma organização específica.
 
-**Estado:** `0.2.0rc3` em homologação; testes locais e CI simulados, **sem homologação real em um Hermes/Chatwoot operacional**. Esta versão altera o contrato de ferramentas da v0.1 (incompatível com chamadas antigas que usavam `installation`).
+**Estado:** `0.2.0rc4` em homologação; testes locais e CI simulados, **sem homologação real em um Hermes/Chatwoot operacional**. Esta versão altera o contrato de ferramentas da v0.1 (incompatível com chamadas antigas que usavam `installation`).
 
 ## Arquitetura e identidade
 
@@ -108,7 +108,7 @@ Veja [Ferramentas](docs/FERRAMENTAS.md), [Configuração](docs/CONFIGURACAO.md) 
 
 ## Limites da escolha de usuário
 
-`credential` é uma **identidade de autenticação configurada**, não uma prova de que a pessoa correspondente solicitou a operação. Um agente que possua as credenciais `operador_a` e `operador_b` habilitadas poderá selecionar qualquer uma delas. Para exigir que determinado atendimento utilize apenas uma identidade, restrinja as entradas de `credentials` disponibilizadas ao perfil ou vincule a identidade por um consumidor confiável; a v0.2rc2 ainda não realiza autorização por sessão.
+`credential` é uma **identidade de autenticação configurada**, não uma prova de que a pessoa correspondente solicitou a operação. Um agente que possua as credenciais `operador_a` e `operador_b` habilitadas poderá selecionar qualquer uma delas. Para exigir que determinado atendimento utilize apenas uma identidade, restrinja as entradas de `credentials` disponibilizadas ao perfil ou vincule a identidade por um consumidor confiável; a versão atual ainda não realiza autorização por sessão.
 
 O Chatwoot determina a autoria efetiva da operação a partir do token autenticado e das permissões reais. O identificador `credential` não é o nome de usuário verificado pelo plugin. Para conferir a autoria, utilize os dados do servidor em uma homologação real.
 
@@ -154,3 +154,11 @@ Os testes usam doubles de `CWClient` e não comprovam integração real. A valid
 - [Homologação](docs/HOMOLOGACAO.md)
 - [Segurança do perfil Hermes](docs/SEGURANCA_PERFIL.md)
 - [Histórico de versões](CHANGELOG.md)
+
+## Envelopes de processamento e respostas nativas
+
+O envelope mínimo enviado pelo orquestrador ao Hermes é contrato do consumidor, não um formato imposto pelo plugin. O Hermes pode responder com esse contexto quando suficiente, ou consultar as ferramentas para obter o JSON nativo completo do Chatwoot. A extração de uma visão interna de contato é exclusiva da verificação de identidade: a resposta individual da API permanece intacta em `data`. Em buscas por inbox, somente itens fora do escopo são filtrados; campos nativos e metadados são mantidos (contagens da API podem ser anteriores ao filtro local). Nenhuma ferramenta realiza publicação automaticamente ao receber um lote.
+
+## Erros de operações modificadoras
+
+Após invocar método potencialmente modificador do SDK, falhas sem confirmação são reportadas como `outcome_unknown`, inclusive HTTP 5xx, corpo JSON inválido ou falha no fechamento do cliente. O SDK não expõe com precisão se um POST ocorreu: em etiquetas, um GET pode preceder o POST ou dispensá-lo. `outcome_unknown` não comprova transmissão. Reconcilie o estado remoto antes de repetir; não aplique retry automático.

@@ -85,6 +85,15 @@ def _arguments(tool: str, raw: object) -> dict[str, Any]:
         fields = data["fields"]
         if not isinstance(fields, Mapping) or not fields or any(type(k) is not str or k not in WRITABLE_FIELDS for k in fields):
             raise ArgumentsError("fields contém campo desconhecido ou está vazio.")
+        for key, value in fields.items():
+            if key == "blocked":
+                valid = type(value) is bool
+            elif key in ("additional_attributes", "custom_attributes"):
+                valid = value is None or isinstance(value, Mapping)
+            else:
+                valid = value is None or isinstance(value, str)
+            if not valid:
+                raise ArgumentsError("Tipo inválido em fields.")
         data["fields"] = dict(fields)
     return data
 
@@ -103,7 +112,7 @@ class ToolService:
         operation = TOOLS_TO_OPERATIONS.get(tool)
         if operation is None:
             return self._error("unknown_tool", "Ferramenta desconhecida.")
-        write_started = False
+        write_may_have_been_attempted = False
         try:
             data = _arguments(tool, raw)
             cfg = parse_config(self.settings_provider())
@@ -125,7 +134,7 @@ class ToolService:
                         result = conversation
                     else:
                         if operation in _WRITES:
-                            write_started = True
+                            write_may_have_been_attempted = True
                         result = self._run(cw, tool, data)
                 elif tool in _CONTACT:
                     contact = contact_identity(cw, aid, iid, data["contact_id"])
@@ -141,16 +150,21 @@ class ToolService:
         except PluginError as e:
             return self._error(e.code, str(e))
         except (ValueError, TypeError):
+            if write_may_have_been_attempted:
+                return self._error("outcome_unknown", "Resultado modificador incerto; reconciliar antes de repetir.")
             return self._error("invalid_arguments", "A operação foi rejeitada pelo contrato Python.")
         except (ModuleNotFoundError, ImportError):
+            if write_may_have_been_attempted:
+                return self._error("outcome_unknown", "Resultado modificador incerto; reconciliar antes de repetir.")
             return self._error("client_unavailable", "O pacote chatwoot_client não está disponível no runtime Hermes.")
         except Exception as e:
-            # Não devolver corpo, headers, URL ou token ao modelo, mesmo em exceções.
+            # O SDK pode perder a fase exata da requisição, inclusive em GET+POST.
+            # Não inferir rejeição comprovada a partir de HTTP 500 ou JSON inválido.
+            if write_may_have_been_attempted:
+                return self._error("outcome_unknown", "Operação potencialmente modificadora sem resultado confirmado; reconciliar antes de repetir.")
             status = getattr(e, "status_http", None)
-            if type(status) is int and 100 <= status <= 599:
-                return self._error("chatwoot_api_error", "A API Chatwoot rejeitou a operação.", status_http=status)
-            if write_started:
-                return self._error("outcome_unknown", "Falha após início da escrita; reconciliar antes de repetir.")
+            if type(status) is int and 400 <= status < 500:
+                return self._error("chatwoot_api_error", "A API Chatwoot recusou a consulta.", status_http=status)
             return self._error("execution_error", "Falha ao consultar a API Chatwoot.")
 
     @staticmethod

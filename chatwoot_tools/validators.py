@@ -56,19 +56,50 @@ def filtered_items(raw: Any, allowed: list[dict], form: str) -> Any:
     return result
 
 
-def contact_identity(cw: Any, account_id: int, inbox_id: int, contact_id: int) -> dict:
-    contact = cw.contacts.get(account_id, contact_id)
-    if not isinstance(contact, dict) or contact.get("id") != contact_id:
+def contact_view(raw: Any) -> dict:
+    """Extrai visão de validação, sem alterar o envelope original."""
+    if not isinstance(raw, dict):
+        raise ScopeError("Detalhe de contato inválido.")
+    if "payload" in raw:
+        if set(raw).intersection({"id", "data"}) or not isinstance(raw["payload"], dict):
+            raise ScopeError("Envelope de contato ambíguo.")
+        return raw["payload"]
+    if "data" in raw and isinstance(raw["data"], dict) and "payload" in raw["data"]:
+        if "id" in raw or not isinstance(raw["data"]["payload"], dict):
+            raise ScopeError("Envelope de contato ambíguo.")
+        return raw["data"]["payload"]
+    return raw
+
+
+def _check_contact(raw: Any, account_id: int, contact_id: int) -> dict:
+    contact = contact_view(raw)
+    if type(contact.get("id")) is not int or contact["id"] != contact_id:
         raise ScopeError("Identidade do contato divergente.")
-    if "account_id" in contact and contact["account_id"] != account_id:
+    if "account_id" in contact and (type(contact["account_id"]) is not int or contact["account_id"] != account_id):
         raise ScopeError("Conta do contato divergente.")
+    return contact
+
+
+def _history_matches(items: list[dict], account_id: int, inbox_id: int) -> bool:
+    for item in items:
+        if type(item.get("inbox_id")) is not int:
+            raise ScopeError("Histórico com inbox_id inválido.")
+        if "account_id" in item and (type(item["account_id"]) is not int or item["account_id"] != account_id):
+            raise ScopeError("Histórico com account_id divergente.")
+        if item["inbox_id"] == inbox_id:
+            return True
+    return False
+
+
+def contact_identity(cw: Any, account_id: int, inbox_id: int, contact_id: int) -> dict:
+    original = cw.contacts.get(account_id, contact_id)
+    contact = _check_contact(original, account_id, contact_id)
     if associated_inbox(contact, inbox_id):
-        return contact
-    # A API pode não devolver contact_inboxes no detalhe; usar conversas associadas.
+        return original
     conversations = cw.contacts.list_conversations(account_id, contact_id)
     items, _ = payload_items(conversations)
-    if any(isinstance(c, dict) and c.get("inbox_id") == inbox_id for c in items):
-        return contact
+    if _history_matches(items, account_id, inbox_id):
+        return original
     raise ScopeError("Contato não possui associação comprovada à inbox informada.")
 
 

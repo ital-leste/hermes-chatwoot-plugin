@@ -1,4 +1,4 @@
-# Homologação v0.2.0rc3
+# Homologação v0.2.0rc4
 
 ## Estado
 
@@ -39,3 +39,12 @@ Cobertura: manifesto/12 ferramentas, resolução de URL por variável, múltiplo
 - Biblioteca Chatwoot Client formalmente versionada e publicada em índice acessível, com licença aprovada e dependência do plugin declarada no `pyproject.toml`.
 
 **A publicação da biblioteca e a licença ainda não estão concluídas.** Não declarar a dependência automática nem uso produtivo homologados antes de concluir esses gates.
+
+## Gates independentes
+
+1. **Código corrigido:** regressões F1/F2/F3/F5, SDK real com HTTP simulado, schema original e transformado pelo Hermes, CI, documentação e registro nativo.
+2. **Pronto para integração:** interpretador do processo Hermes, SDK e plugin em revisões fixas, perfil, segredos, escopo e permissões conferidos.
+3. **Homologado operacionalmente:** ferramentas invocadas pelo Hermes, consultas reais e escritas apenas com autorização específica, autoria e efeitos comprovados.
+4. **Distribuição estável:** licença e dependências reproduzíveis, versão publicável e evidências da release; atendimento autônomo é gate independente.
+
+A revisão de código não autoriza implantação nem publicação. Registrar SHA validado no relatório após o commit; o README pode utilizar marcador de SHA, sem autorreferência. Testar o import no Python do processo Hermes, não somente no terminal.

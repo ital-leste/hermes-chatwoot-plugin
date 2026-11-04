@@ -1,6 +1,6 @@
 [project]
 name = "hermes-chatwoot-plugin"
-version = "0.2.0rc3"
+version = "0.2.0rc4"
 description = "Hermes tools backed by an external Python Chatwoot Application API client"
 requires-python = ">=3.11"
 # BLOQUEIO DISTRIBUICAO: pacote cliente ainda nao publicado em indice e licencia pendente.
