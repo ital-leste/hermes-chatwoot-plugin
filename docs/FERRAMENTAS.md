@@ -1,4 +1,4 @@
-# Contratos das ferramentas v0.2.0rc3
+# Contratos das ferramentas v0.2.0rc4
 
 ## Identidade
 
@@ -49,4 +49,10 @@ Se `email` não estiver autorizado, a combinação `{"name":"Maria","email":"...
 
 ### Erros
 
-`invalid_configuration`, `operation_denied`, `scope_denied`, `invalid_arguments`, `credentials_unavailable`, `client_unavailable`, `chatwoot_api_error`, `execution_error`, `outcome_unknown`, `unknown_tool`. Corpos de exceção e segredos não retornam ao modelo. `outcome_unknown` só é usado após o início de uma tentativa de escrita; consultas de guarda com falha não o geram.
+`invalid_configuration`, `operation_denied`, `scope_denied`, `invalid_arguments`, `credentials_unavailable`, `client_unavailable`, `chatwoot_api_error`, `execution_error`, `outcome_unknown`, `unknown_tool`. Corpos de exceção e segredos não retornam ao modelo. `outcome_unknown` indica que uma escrita **pode ter sido tentada** em um método potencialmente modificador. Isso não comprova transmissão: métodos de etiquetas podem terminar após GET sem POST. Consultas de guarda anteriores ao método não recebem esse marcador. Não repetir automaticamente; reconciliar resultados ambíguos.
+
+### Envelope do lote vs. JSON da API
+
+O envelope mínimo de mensagens agrupadas pertence ao **orquestrador/consumidor**. A consulta via plugin oferece `data` com JSON original para operações individuais, sem reduzir metadados, mensagens e atributos. Busca e histórico por inbox filtram *itens fora do escopo*, preservando os campos de cada item incluído. O filtro pode manter metadados de contagem anteriores à exclusão local. O modelo pode responder diretamente a um lote suficiente, sem consultas redundantes, mas a publicação requer executor único autorizado.
+
+Campos de `chatwoot_update_contact.fields` são tipados (incluindo `null` em campos compatíveis) e autorizados por `writable_contact_fields`. `custom_attributes` e `additional_attributes` mantêm objetos livres; a validação Python do SDK rejeita valores não JSON e não finitos mesmo quando o provedor de schema não o faz.

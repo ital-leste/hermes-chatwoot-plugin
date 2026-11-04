@@ -2,7 +2,7 @@
 
 Plugin nativo para o Hermes Agent que disponibiliza ferramentas da Application API do Chatwoot por meio da biblioteca Python externa `chatwoot_client`. Não contém regras de negócio ou parâmetros de uma organização específica.
 
-**Estado:** `0.2.0rc4` em homologação; testes locais e CI simulados, **sem homologação real em um Hermes/Chatwoot operacional**. Esta versão altera o contrato de ferramentas da v0.1 (incompatível com chamadas antigas que usavam `installation`).
+**Estado:** `0.2.0rc4` em homologação corretiva; regressões incluem doubles e SDK real com HTTP simulado. **Não há homologação de leitura/escrita no Chatwoot real nem instalação operacional do plugin.** Esta versão altera o contrato de ferramentas da v0.1 (incompatível com chamadas antigas que usavam `installation`).
 
 ## Arquitetura e identidade
 
@@ -12,7 +12,7 @@ Plugin nativo para o Hermes Agent que disponibiliza ferramentas da Application A
 - Operações de conversa exigem `account_id`, `inbox_id`, `conversation_id`. O plugin consulta o Chatwoot e comprova a associação antes de ler ou escrever.
 - Pesquisas de conversas exigem `account_id` e `inbox_id`; pesquisas de contatos usam essa dupla, e operações sobre contatos exigem `contact_id` adicional.
 - Uma tríade válida não prova que o modelo escolheu a conversa pretendida pelo evento do consumidor. A autorização por sessão, idempotência, handoff e políticas de atendimento continuam fora do plugin.
-- Respostas de recursos são JSON nativo integral. Nas **pesquisas por inbox**, itens de outra inbox são excluídos para respeitar a restrição de destino; seus campos originais não são projetados ou ocultados.
+- Consultas individuais devolvem o JSON original da API dentro de `data`, inclusive envelopes `payload` e metadados. **Pesquisas e históricos por inbox** preservam o formato e todos os campos dos itens autorizados, mas excluem recursos de outras inboxes. Contagens nativas podem refletir a busca anterior ao filtro. A visão interna para validação não substitui o JSON devolvido ao agente.
 - O plugin não abre servidor, não persiste dados, não importa Evolution API e não executa HTTP Chatwoot sem `chatwoot_client`.
 
 ## Configuração do perfil
@@ -102,13 +102,13 @@ Exemplo de publicação:
 {"credential": "atendimento", "account_id": 7, "inbox_id": 4, "conversation_id": 482, "content": "Bom dia!"}
 ```
 
-O plugin resolve `credential` no mapa autorizado, confere a igualdade do `account_id` com o único `account_id` da credencial, recupera o token pelo nome da variável e então confere a associação com `conversations.get()` e só então chama `messages.send_text()` do cliente. Não garante entrega no WhatsApp após HTTP 2xx. Falhas após início da escrita podem ter resultado indeterminado, e não devem ser repetidas cegamente.
+O plugin resolve `credential` no mapa autorizado, confere a igualdade do `account_id` com o único `account_id` da credencial, recupera o token pelo nome da variável e então confere a associação com `conversations.get()` e só então chama `messages.send_text()` do cliente. Não garante entrega no WhatsApp após HTTP 2xx. Falhas dentro de método potencialmente modificador, inclusive HTTP 2xx com JSON inválido, HTTP 5xx ou timeout, podem devolver `outcome_unknown`; não repetir sem reconciliação. Em etiquetas o método pode concluir após GET sem POST, de modo que `outcome_unknown` é conservador e **não comprova transmissão**. Sucesso HTTP também não comprova entrega externa.
 
 Veja [Ferramentas](docs/FERRAMENTAS.md), [Configuração](docs/CONFIGURACAO.md) e [Arquitetura](docs/ARQUITETURA.md).
 
 ## Limites da escolha de usuário
 
-`credential` é uma **identidade de autenticação configurada**, não uma prova de que a pessoa correspondente solicitou a operação. Um agente que possua as credenciais `operador_a` e `operador_b` habilitadas poderá selecionar qualquer uma delas. Para exigir que determinado atendimento utilize apenas uma identidade, restrinja as entradas de `credentials` disponibilizadas ao perfil ou vincule a identidade por um consumidor confiável; a versão atual ainda não realiza autorização por sessão.
+`credential` é uma **identidade de autenticação configurada**, não uma prova de que a pessoa correspondente solicitou a operação. Um agente que possua as credenciais `operador_a` e `operador_b` habilitadas poderá selecionar qualquer uma delas. Para exigir que determinado atendimento utilize apenas uma identidade, restrinja as entradas de `credentials` disponibilizadas ao perfil ou vincule a identidade por um consumidor confiável; a v0.2rc4 ainda não realiza autorização por sessão.
 
 O Chatwoot determina a autoria efetiva da operação a partir do token autenticado e das permissões reais. O identificador `credential` não é o nome de usuário verificado pelo plugin. Para conferir a autoria, utilize os dados do servidor em uma homologação real.
 
@@ -116,10 +116,10 @@ Veja [Segurança do perfil](docs/SEGURANCA_PERFIL.md) para as configurações de
 
 ## Instalação e limitação de distribuição
 
-O plugin pode ser instalado pelo gerenciador nativo do Hermes. Substitua `<owner>` pela organização ou usuário responsável pelo repositório público:
+Para homologação, utilizar a revisão imutável aprovada. Substitua `<SHA_HOMOLOG_VALIDADO>` pelo SHA completo registrado no **relatório do commit final**, não tente colocar o SHA do próprio commit dentro deste README:
 
 ```bash
-hermes plugins install <owner>/hermes-chatwoot-plugin
+hermes plugins install ital-leste/hermes-chatwoot-plugin --ref <SHA_HOMOLOG_VALIDADO>
 hermes plugins enable chatwoot-tools
 hermes plugins list
 hermes plugins validate .
@@ -128,23 +128,23 @@ hermes plugins doctor . --ci
 
 **Distribuição pendente:** a biblioteca independente que fornece o módulo `chatwoot_client` ainda não possui uma distribuição versionada confirmada e licenciada num índice Python compatível com o gerenciador Hermes. Por isso, o manifesto do plugin mantém `dependencies = []` temporariamente.
 
-Para homologação, instale o projeto da biblioteca externa a partir de um checkout local, **no interpretador Python usado pelo Hermes**:
+Para homologação controlada, provisione o SDK externo no **mesmo interpretador/processo Python utilizado pelo Hermes** a partir de um checkout com SHA identificado; registre o SHA e como a instalação persiste após rebuild do ambiente:
 
 ```bash
-python -m pip install /caminho/para/chatwoot-client
+python -m pip install "git+https://github.com/ital-leste/chatwoot-client.git@ef7254b5e45d27e710e23a4c6bc255f55d147206"
 python -c "from chatwoot_client import CWClient; print('OK')"
 ```
 
-O caminho é ilustrativo. O pacote Python instalado deve disponibilizar o módulo `chatwoot_client` utilizado pelo plugin; não substitua por qualquer pacote homônimo sem verificar a API. A dependência formal será declarada somente depois da publicação de uma versão compatível em um índice autorizado. Esse requisito permanece pendente, assim como a homologação nativa em uma instalação real.
+O comando acima é de **provisionamento de homologação** e precisa ser executado no ambiente efetivo do Hermes, não em um terminal/venv diferente. O pacote instalado deve disponibilizar `chatwoot_client`; não substitua por qualquer pacote homônimo sem verificar a API. A dependência formal será declarada somente depois da publicação de uma versão compatível em um índice autorizado. Esse requisito permanece pendente, assim como a homologação nativa em uma instalação real.
 
 ## Testes e homologação
 
 ```bash
-python -m pip install 'pytest>=8,<10' 'PyYAML>=6,<7'
+python -m pip install 'pytest>=8,<10' 'PyYAML>=6,<7' 'jsonschema>=4,<5'
 python -m pytest -q
 ```
 
-Os testes usam doubles de `CWClient` e não comprovam integração real. A validação integrada deve ser feita com credenciais de teste e autorização explícita, iniciando por permissões somente de leitura. Ver [Plano de homologação](docs/HOMOLOGACAO.md).
+Os testes unitários usam doubles; as regressões adicionais exercitam o SDK `chatwoot_client` real com `httpx.MockTransport` sem rede. Isso não comprova integração real com Hermes/Chatwoot. A representação final dos schemas após adaptação pelo Hermes/provedor também exige verificação no runtime alvo. A validação integrada deve ser feita com credenciais de teste e autorização explícita, iniciando por permissões somente de leitura. Ver [Plano de homologação](docs/HOMOLOGACAO.md).
 
 ## Documentação
 
@@ -154,11 +154,4 @@ Os testes usam doubles de `CWClient` e não comprovam integração real. A valid
 - [Homologação](docs/HOMOLOGACAO.md)
 - [Segurança do perfil Hermes](docs/SEGURANCA_PERFIL.md)
 - [Histórico de versões](CHANGELOG.md)
-
-## Envelopes de processamento e respostas nativas
-
-O envelope mínimo enviado pelo orquestrador ao Hermes é contrato do consumidor, não um formato imposto pelo plugin. O Hermes pode responder com esse contexto quando suficiente, ou consultar as ferramentas para obter o JSON nativo completo do Chatwoot. A extração de uma visão interna de contato é exclusiva da verificação de identidade: a resposta individual da API permanece intacta em `data`. Em buscas por inbox, somente itens fora do escopo são filtrados; campos nativos e metadados são mantidos (contagens da API podem ser anteriores ao filtro local). Nenhuma ferramenta realiza publicação automaticamente ao receber um lote.
-
-## Erros de operações modificadoras
-
-Após invocar método potencialmente modificador do SDK, falhas sem confirmação são reportadas como `outcome_unknown`, inclusive HTTP 5xx, corpo JSON inválido ou falha no fechamento do cliente. O SDK não expõe com precisão se um POST ocorreu: em etiquetas, um GET pode preceder o POST ou dispensá-lo. `outcome_unknown` não comprova transmissão. Reconcilie o estado remoto antes de repetir; não aplique retry automático.
+- [Solicitação de revisão independente rc4](docs/REVISAO_INDEPENDENTE_RC4.md)

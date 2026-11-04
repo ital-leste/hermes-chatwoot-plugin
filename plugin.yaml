@@ -1,5 +1,5 @@
 name: chatwoot-tools
-version: 0.2.0-rc.3
+version: 0.2.0-rc.4
 description: Ferramentas para a Application API do Chatwoot via chatwoot_client.
 provides_tools:
   - chatwoot_get_conversation

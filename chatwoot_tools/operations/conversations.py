@@ -8,15 +8,17 @@ def get(cw: Any, aid: int, iid: int, cid: int):
 
 
 def list_conversations(cw: Any, aid: int, iid: int, *, status=None, q=None, page=None):
-    opts = {k:v for k,v in {"status":status, "q":q, "page":page}.items() if v is not None}
-    result = cw.conversations.list(aid, inbox_id=iid, **opts)
-    items, _ = payload_items(result)
+    opts = {k: v for k, v in {"status": status, "q": q, "page": page}.items() if v is not None}
+    raw = cw.conversations.list(aid, inbox_id=iid, **opts)
+    items, _ = payload_items(raw)
     for item in items:
         verify_conversation(item, aid, iid)
-    return result
+    return raw
 
 
-def set_status(cw: Any, aid: int, cid: int, status: str, snoozed_until=None):
-    from chatwoot_client import ConversationStatus
+def set_status(cw: Any, aid: int, cid: int, status: str, snoozed_until=None, *, prepared=None):
+    if prepared is None:
+        from chatwoot_client import ConversationStatus
+        prepared = ConversationStatus(status)
     kw = {"snoozed_until": snoozed_until} if snoozed_until is not None else {}
-    return cw.conversations.set_status(aid, cid, ConversationStatus(status), **kw)
+    return cw.conversations.set_status(aid, cid, prepared, **kw)

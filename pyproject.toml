@@ -3,13 +3,13 @@ name = "hermes-chatwoot-plugin"
 version = "0.2.0rc4"
 description = "Hermes tools backed by an external Python Chatwoot Application API client"
 requires-python = ">=3.11"
-# BLOQUEIO DISTRIBUICAO: pacote cliente ainda nao publicado em indice e licencia pendente.
-# Ate publicacao, instalar chatwoot_client separadamente no Python do Hermes.
-# Nao usar dependencias por URL Git aqui: Hermes PM nao as suporta.
+# Distribuicao estavel pendente: o SDK externo precisa de artefato/licenca
+# aprovados e mecanismo de provisionamento compativel com o Hermes.
+# Homologacao reproduz o SDK em commit fixo no Python efetivo do agente.
 dependencies = []
 
 [project.optional-dependencies]
-test = ["pytest>=8,<10", "PyYAML>=6,<7"]
+test = ["pytest>=8,<10", "PyYAML>=6,<7", "jsonschema>=4,<5", "httpx>=0.27,<1"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

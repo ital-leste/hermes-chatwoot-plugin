@@ -1,7 +1,12 @@
-"""Contatos por inbox. O filtro técnico de inbox não é projeção de privacidade."""
+"""Operações de contato restritas à inbox, mantendo JSON nativo dos itens permitidos."""
 from __future__ import annotations
 from typing import Any
-from ..validators import contact_identity, contact_view, _check_contact, _history_matches, payload_items, filtered_items, associated_inbox
+
+from ..errors import ScopeError
+from ..validators import (
+    _account_consistent, _positive_id, associated_inbox, contact_identity,
+    filtered_items, history_association, payload_items, verify_contact,
+)
 
 
 def get(cw: Any, aid: int, iid: int, contact_id: int):
@@ -10,52 +15,48 @@ def get(cw: Any, aid: int, iid: int, contact_id: int):
 
 def list_conversations(cw: Any, aid: int, iid: int, contact_id: int):
     contact_identity(cw, aid, iid, contact_id)
-    res = cw.contacts.list_conversations(aid, contact_id)
-    items, shape = payload_items(res)
-    # A conta já é imposta pela rota; filtrar por inbox, pois o contato pode estar em várias.
-    matches = []
-    for item in items:
-        if type(item.get("inbox_id")) is not int:
-            from ..errors import ScopeError
-            raise ScopeError("Histórico com inbox_id inválido.")
-        if "account_id" in item and (type(item["account_id"]) is not int or item["account_id"] != aid):
-            from ..errors import ScopeError
-            raise ScopeError("Histórico com account_id divergente.")
-        if item["inbox_id"] == iid:
-            matches.append(item)
-    return filtered_items(res, matches, shape)
+    raw = cw.contacts.list_conversations(aid, contact_id)
+    items, form = payload_items(raw)
+    allowed = []
+    for conv in items:
+        if type(conv.get("inbox_id")) is not int or conv["inbox_id"] != iid:
+            continue
+        _account_consistent(conv, aid)
+        if "contact_id" in conv and (
+            not _positive_id(conv["contact_id"]) or conv["contact_id"] != contact_id
+        ):
+            raise ScopeError("Contato divergente no histórico da conversa.")
+        allowed.append(conv)
+    return filtered_items(raw, allowed, form)
 
 
 def search(cw: Any, aid: int, iid: int, q: str, page: int | None = None):
-    kw = {"q":q}
+    args = {"q": q}
     if page is not None:
-        kw["page"] = page
-    res = cw.contacts.search(aid, **kw)
-    items, shape = payload_items(res)
-    # Para cada candidato exigir prova de associação real à inbox, evitando
-    # devolver contatos de outras inboxes apenas porque o nome coincide.
-    valid = []
-    for item in items:
-        contact_id = item.get("id")
-        if type(contact_id) is not int or contact_id <= 0:
-            from ..errors import ScopeError
+        args["page"] = page
+    raw = cw.contacts.search(aid, **args)
+    items, form = payload_items(raw)
+    allowed = []
+    for candidate in items:
+        cid = candidate.get("id")
+        if not _positive_id(cid):
             raise ScopeError("Busca retornou contato sem identidade válida.")
-        _check_contact(item, aid, contact_id)
-        if associated_inbox(item, iid):
-            valid.append(item)
+        _account_consistent(candidate, aid)
+        if associated_inbox(candidate, iid, aid):
+            allowed.append(candidate)
             continue
-        detail = cw.contacts.get(aid, contact_id)
-        checked = _check_contact(detail, aid, contact_id)
-        if associated_inbox(checked, iid):
-            valid.append(item)
+        detail = cw.contacts.get(aid, cid)
+        contact = verify_contact(detail, aid, cid)
+        if associated_inbox(contact, iid, aid):
+            allowed.append(candidate)
             continue
-        history = cw.contacts.list_conversations(aid, contact_id)
+        history = cw.contacts.list_conversations(aid, cid)
         conversations, _ = payload_items(history)
-        if _history_matches(conversations, aid, iid):
-            valid.append(item)
-    return filtered_items(res, valid, shape)
+        if history_association(conversations, aid, iid, cid):
+            allowed.append(candidate)
+    return filtered_items(raw, allowed, form)
 
 
-def update(cw: Any, aid: int, contact_id: int, fields: dict):
-    from chatwoot_client import Contact
-    return cw.contacts.update(aid, contact_id, Contact(**fields))
+def update(cw: Any, aid: int, contact_id: int, contact: Any):
+    """Recebe Contact previamente validado antes da tentativa de escrita."""
+    return cw.contacts.update(aid, contact_id, contact)

@@ -1,15 +1,15 @@
-"""Orquestra autorização, conexão confiável e operações tipadas do cliente."""
+"""Valida ferramentas, resolve conexão e executa operações pelo SDK público."""
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Mapping
 from typing import Any
-import json
 
-from .config import parse_config, WRITABLE_FIELDS
-from .connection import create_client, resolve_secret, resolve_connection
-from .errors import ArgumentsError, AuthorizationError, ScopeError, PluginError
+from .config import WRITABLE_FIELDS, parse_config
+from .connection import create_client, resolve_connection, resolve_secret
+from .errors import ArgumentsError, AuthorizationError, PluginError, ScopeError
 from .permissions import require_fields, require_operation
-from .validators import conversation_identity, contact_identity
+from .validators import contact_identity, conversation_identity
 from .operations import contacts, conversations, labels, messages
 
 TOOLS_TO_OPERATIONS = {
@@ -31,14 +31,17 @@ _CONVERSATION = frozenset({
     "chatwoot_send_private_note", "chatwoot_set_status", "chatwoot_add_labels", "chatwoot_remove_labels",
 })
 _CONTACT = frozenset({"chatwoot_get_contact", "chatwoot_get_contact_conversations", "chatwoot_update_contact"})
-_WRITES = frozenset({"messages.send_public", "messages.send_private", "conversation.status.update", "conversation.labels.add", "conversation.labels.remove", "contacts.update"})
+_WRITES = frozenset({
+    "messages.send_public", "messages.send_private", "conversation.status.update",
+    "conversation.labels.add", "conversation.labels.remove", "contacts.update",
+})
 _OPTIONS = {
     "chatwoot_get_conversation": (set(), set()),
-    "chatwoot_list_conversations": ({"status","q","page"}, set()),
+    "chatwoot_list_conversations": ({"status", "q", "page"}, set()),
     "chatwoot_list_messages": ({"before", "after"}, set()),
     "chatwoot_send_public_message": ({"content"}, {"content"}),
     "chatwoot_send_private_note": ({"content"}, {"content"}),
-    "chatwoot_set_status": ({"status","snoozed_until"}, {"status"}),
+    "chatwoot_set_status": ({"status", "snoozed_until"}, {"status"}),
     "chatwoot_add_labels": ({"labels"}, {"labels"}),
     "chatwoot_remove_labels": ({"labels"}, {"labels"}),
     "chatwoot_search_contacts": ({"q", "page"}, {"q"}),
@@ -57,8 +60,8 @@ def _arguments(tool: str, raw: object) -> dict[str, Any]:
         base.add("conversation_id")
     if tool in _CONTACT:
         base.add("contact_id")
-    opt, req = _OPTIONS[tool]
-    if not (base | req).issubset(data) or set(data) - base - opt:
+    optional, required = _OPTIONS[tool]
+    if not (base | required).issubset(data) or set(data) - base - optional:
         raise ArgumentsError("Argumentos ausentes ou não reconhecidos.")
     if not isinstance(data["credential"], str) or not data["credential"].strip():
         raise ArgumentsError("credential deve ser nome de identidade não vazio.")
@@ -78,13 +81,18 @@ def _arguments(tool: str, raw: object) -> dict[str, Any]:
     if "snoozed_until" in data and data.get("status") != "snoozed":
         raise ArgumentsError("snoozed_until requer status snoozed.")
     if "labels" in data:
-        v = data["labels"]
-        if not isinstance(v, list) or not v or any(not isinstance(x, str) or not x.strip() for x in v):
+        labels_input = data["labels"]
+        if not isinstance(labels_input, list) or not labels_input or any(
+            not isinstance(item, str) or not item.strip() for item in labels_input
+        ):
             raise ArgumentsError("labels deve ser lista não vazia de strings.")
     if "fields" in data:
         fields = data["fields"]
-        if not isinstance(fields, Mapping) or not fields or any(type(k) is not str or k not in WRITABLE_FIELDS for k in fields):
+        if not isinstance(fields, Mapping) or not fields or any(
+            type(key) is not str or key not in WRITABLE_FIELDS for key in fields
+        ):
             raise ArgumentsError("fields contém campo desconhecido ou está vazio.")
+        # Falha antes da rede, mesmo quando o SDK estiver substituido por double.
         for key, value in fields.items():
             if key == "blocked":
                 valid = type(value) is bool
@@ -96,6 +104,22 @@ def _arguments(tool: str, raw: object) -> dict[str, Any]:
                 raise ArgumentsError("Tipo inválido em fields.")
         data["fields"] = dict(fields)
     return data
+
+
+def _prepare_write(tool: str, data: dict[str, Any]) -> Any:
+    """Prepara contratos do SDK antes de qualquer método potencialmente modificador."""
+    if tool == "chatwoot_update_contact":
+        from chatwoot_client import Contact
+        contact = Contact(**data["fields"])
+        contact.to_payload() if hasattr(contact, "to_payload") else None
+        return contact
+    if tool in ("chatwoot_send_public_message", "chatwoot_send_private_note"):
+        from chatwoot_client import TextMessage
+        return TextMessage(data["content"], private=(tool == "chatwoot_send_private_note"))
+    if tool == "chatwoot_set_status":
+        from chatwoot_client import ConversationStatus
+        return ConversationStatus(data["status"])
+    return None
 
 
 class ToolService:
@@ -112,84 +136,93 @@ class ToolService:
         operation = TOOLS_TO_OPERATIONS.get(tool)
         if operation is None:
             return self._error("unknown_tool", "Ferramenta desconhecida.")
-        write_may_have_been_attempted = False
+        # Significa somente que o método público pode ter tentado modificar dados.
+        # Em etiquetas, o método do SDK faz GET e pode terminar sem POST.
+        possible_write = False
         try:
             data = _arguments(tool, raw)
-            cfg = parse_config(self.settings_provider())
-            require_operation(cfg, operation)
+            config = parse_config(self.settings_provider())
+            require_operation(config, operation)
             if tool == "chatwoot_update_contact":
-                require_fields(cfg, data["fields"])
-            credential = cfg.credentials.get(data["credential"])
+                require_fields(config, data["fields"])
+            credential = config.credentials.get(data["credential"])
             if credential is None:
                 raise AuthorizationError("Identidade de usuário não autorizada neste perfil.")
             if data["account_id"] != credential.account_id:
                 raise ScopeError("Conta não autorizada para a credencial selecionada.")
-            url, token = resolve_connection(cfg, credential, self.secret_provider)
+            prepared = _prepare_write(tool, data) if operation in _WRITES else None
+            url, token = resolve_connection(config, credential, self.secret_provider)
             with self.client_factory(url, token) as cw:
                 aid, iid = data["account_id"], data["inbox_id"]
                 if tool in _CONVERSATION:
-                    # Confere sempre conta, inbox e conversa, independentemente de allowlists.
                     conversation = conversation_identity(cw, aid, iid, data["conversation_id"])
                     if tool == "chatwoot_get_conversation":
                         result = conversation
                     else:
-                        if operation in _WRITES:
-                            write_may_have_been_attempted = True
-                        result = self._run(cw, tool, data)
+                        possible_write = operation in _WRITES
+                        result = self._run(cw, tool, data, prepared)
                 elif tool in _CONTACT:
                     contact = contact_identity(cw, aid, iid, data["contact_id"])
                     if tool == "chatwoot_get_contact":
                         result = contact
                     else:
-                        if operation in _WRITES:
-                            write_started = True
-                        result = self._run(cw, tool, data)
+                        possible_write = operation in _WRITES
+                        result = self._run(cw, tool, data, prepared)
                 else:
-                    result = self._run(cw, tool, data)
+                    result = self._run(cw, tool, data, prepared)
             return json.dumps({"success": True, "operation": operation, "credential": data["credential"], "data": result}, ensure_ascii=False, allow_nan=False)
-        except PluginError as e:
-            return self._error(e.code, str(e))
+        except PluginError as exc:
+            if possible_write:
+                return self._unknown()
+            return self._error(exc.code, str(exc))
         except (ValueError, TypeError):
-            if write_may_have_been_attempted:
-                return self._error("outcome_unknown", "Resultado modificador incerto; reconciliar antes de repetir.")
+            if possible_write:
+                return self._unknown()
             return self._error("invalid_arguments", "A operação foi rejeitada pelo contrato Python.")
         except (ModuleNotFoundError, ImportError):
-            if write_may_have_been_attempted:
-                return self._error("outcome_unknown", "Resultado modificador incerto; reconciliar antes de repetir.")
+            if possible_write:
+                return self._unknown()
             return self._error("client_unavailable", "O pacote chatwoot_client não está disponível no runtime Hermes.")
-        except Exception as e:
-            # O SDK pode perder a fase exata da requisição, inclusive em GET+POST.
-            # Não inferir rejeição comprovada a partir de HTTP 500 ou JSON inválido.
-            if write_may_have_been_attempted:
-                return self._error("outcome_unknown", "Operação potencialmente modificadora sem resultado confirmado; reconciliar antes de repetir.")
-            status = getattr(e, "status_http", None)
-            if type(status) is int and 400 <= status < 500:
-                return self._error("chatwoot_api_error", "A API Chatwoot recusou a consulta.", status_http=status)
+        except Exception as exc:
+            # Não retornar URLs, tokens, headers, corpos ou exceções ao modelo.
+            status = getattr(exc, "status_http", None)
+            if possible_write:
+                # Só um conjunto restrito de status de rejeição comprovada
+                # produz erro conhecido; 2xx inválido, 5xx e timeout são incertos.
+                if type(status) is int and status in {400, 401, 403, 404, 405, 422}:
+                    return self._error("chatwoot_api_error", "A API Chatwoot rejeitou a operação.", status_http=status)
+                return self._unknown()
+            if type(status) is int and 100 <= status <= 599:
+                return self._error("chatwoot_api_error", "A consulta à API Chatwoot falhou.", status_http=status)
             return self._error("execution_error", "Falha ao consultar a API Chatwoot.")
+
+    @classmethod
+    def _unknown(cls) -> str:
+        return cls._error("outcome_unknown", "Efeito da escrita indeterminado; reconciliar antes de repetir.")
 
     @staticmethod
     def _error(code: str, message: str, **extras: Any) -> str:
-        return json.dumps({"success": False, "error": {"code":code,"message":message,**extras}}, ensure_ascii=False)
+        return json.dumps({"success": False, "error": {"code": code, "message": message, **extras}}, ensure_ascii=False)
 
     @staticmethod
-    def _run(cw: Any, tool: str, data: dict[str, Any]) -> Any:
+    def _run(cw: Any, tool: str, data: dict[str, Any], prepared: Any = None) -> Any:
         aid, iid = data["account_id"], data["inbox_id"]
         cid = data.get("conversation_id")
         contact_id = data.get("contact_id")
         if tool == "chatwoot_list_conversations":
-            return conversations.list_conversations(cw, aid, iid, **{k:data[k] for k in ("status","q","page") if k in data})
+            return conversations.list_conversations(cw, aid, iid, **{k: data[k] for k in ("status", "q", "page") if k in data})
         if tool == "chatwoot_list_messages":
-            return messages.list_messages(cw, aid, cid, **{k:data[k] for k in ("before","after") if k in data})
+            return messages.list_messages(cw, aid, cid, **{k: data[k] for k in ("before", "after") if k in data})
         if tool in ("chatwoot_send_public_message", "chatwoot_send_private_note"):
-            return messages.send(cw, aid, cid, data["content"], tool == "chatwoot_send_private_note")
+            return messages.send(cw, aid, cid, data["content"], tool == "chatwoot_send_private_note", prepared=prepared)
         if tool == "chatwoot_set_status":
-            return conversations.set_status(cw, aid, cid, data["status"], data.get("snoozed_until"))
+            return conversations.set_status(cw, aid, cid, data["status"], data.get("snoozed_until"), prepared=prepared)
         if tool in ("chatwoot_add_labels", "chatwoot_remove_labels"):
-            return labels.modify(cw, aid, cid, data["labels"], remove=tool=="chatwoot_remove_labels")
+            return labels.modify(cw, aid, cid, data["labels"], remove=tool == "chatwoot_remove_labels")
         if tool == "chatwoot_search_contacts":
             return contacts.search(cw, aid, iid, data["q"], data.get("page"))
         if tool == "chatwoot_get_contact_conversations":
             return contacts.list_conversations(cw, aid, iid, contact_id)
         if tool == "chatwoot_update_contact":
-            return contacts.update(cw, aid, contact_id, data["fields"])
+            return contacts.update(cw, aid, contact_id, prepared)
         raise ArgumentsError("Operação não implementada.")

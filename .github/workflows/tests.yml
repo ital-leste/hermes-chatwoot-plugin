@@ -15,5 +15,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - run: python -m pip install 'pytest>=8,<10' 'PyYAML>=6,<7'
-      - run: python -m pytest -q
+      - name: Dependencias de testes e Chatwoot Client com SHA fixo
+        run: |
+          python -m pip install 'pytest>=8,<10' 'PyYAML>=6,<7' 'jsonschema>=4,<5'
+          python -m pip install 'git+https://github.com/ital-leste/chatwoot-client.git@ef7254b5e45d27e710e23a4c6bc255f55d147206'
+          python -c 'from chatwoot_client import CWClient, Contact; print("SDK Chatwoot carregado")'
+      - name: Suite unitária e contratos com SDK real/MockTransport
+        run: python -m pytest -q -ra
+      - name: Validação estática
+        run: python -m compileall -q chatwoot_tools schemas.py tests

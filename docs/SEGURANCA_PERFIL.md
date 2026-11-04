@@ -8,7 +8,7 @@ Este documento descreve **critérios de implantação**, não capacidades de san
 2. Confirmar na versão real do Hermes que o bloqueio de ferramentas é efetivo. Não confiar apenas em instruções do prompt ou arquivos `SOUL.md`.
 3. Manter URL e tokens Chatwoot no `.env`/escopo de segredos do perfil, não no contexto do modelo, em tool calls, repositórios ou logs.
 4. Considerar isolamento de sistema operacional, usuário de serviço, contêiner e/ou `plugins.isolation: host` (conforme suporte da versão instalada). A escolha de ferramentas deve ser restrita no host além de na configuração do perfil para aplicações de alto risco.
-5. Evitar expor múltiplos tokens humanos a um agente autônomo quando o fluxo permitir escolher uma identidade arbitrária. As credenciais em `credentials` são um conjunto permitido; a v0.2rc2 **não** comprova que Operador A autorizou determinado envio. Se a autoria for determinada por handoff, o consumidor deve associar uma identidade autenticada à execução por canal confiável ou usar um perfil restrito àquela identidade.
+5. Evitar expor múltiplos tokens humanos a um agente autônomo quando o fluxo permitir escolher uma identidade arbitrária. As credenciais em `credentials` são um conjunto permitido; a v0.2rc4 **não** comprova que Operador A autorizou determinado envio. Se a autoria for determinada por handoff, o consumidor deve associar uma identidade autenticada à execução por canal confiável ou usar um perfil restrito àquela identidade.
 6. Restringir cada identidade a um único `account_id` e `allowed_operations` globalmente. Revisar os tokens e permissões reais no Chatwoot; o plugin não amplia privilégios do token.
 7. Alterar um token no `.env` exige confirmar o refresh/reload no runtime Hermes. Remover do YAML impede novas chamadas daquela identidade quando a configuração for carregada, mas não revoga o token no servidor: revogue-o também no Chatwoot quando necessário.
 
@@ -25,3 +25,7 @@ Este documento descreve **critérios de implantação**, não capacidades de san
 O plugin não implementa políticas de handoff, bloqueio de terminal, controle de sessão ou ACL de operador. Esses mecanismos pertencem à configuração e ao ambiente de execução do Hermes e ao consumidor.
 
 Referências: https://hermes-agent.nousresearch.com/docs/user-guide/profiles ; https://hermes-agent.nousresearch.com/docs/developer-guide/plugins ; https://hermes-agent.nousresearch.com/docs/user-guide/features/plugins
+
+## Diagnóstico de resultados e etapas
+
+`outcome_unknown` indica que o resultado de um método potencialmente modificador não foi comprovado, mesmo que o método tenha feito apenas GET. Não repetir a operação antes de reconciliar. Os quatro gates independentes (código, prontidão, homologação integrada, distribuição) estão documentados em [Homologação](HOMOLOGACAO.md). A existência de lote de mensagens é contexto para a decisão do Hermes, não autorização automática para usar qualquer credencial/conta ou publicar uma resposta.

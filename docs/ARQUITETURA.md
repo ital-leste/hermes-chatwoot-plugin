@@ -1,4 +1,4 @@
-# Arquitetura da v0.2.0rc3
+# Arquitetura da v0.2.0rc4
 
 ## Objetivo
 
@@ -54,3 +54,11 @@ A conexão não possui aliases de instalações nem mudanças arbitrárias de se
 - Nenhum hook captura tokens de outro plugin, nenhum `.env` do plugin é lido. Todos os nomes de variáveis são definidos no perfil. `agent.secret_scope.get_secret` preserva o escopo do perfil quando suportado pelo Hermes; a instalação deve comprovar esse isolamento.
 - O plugin não recebe nem retorna o valor do token ao agente. Um `credential` escolhido pelo modelo seleciona uma identidade permitida no perfil, não a própria autorização humana de usar aquela identidade. Escopo por sessão fica com o consumidor.
 - Adição/remoção de etiquetas no cliente é leitura + escrita, não transacional. Não há retry automático de escrita.
+
+## Contratos distintos: lote e API
+
+O envelope de lote `EnvelopeHermes` pertence ao consumidor/orquestrador. Ele identifica mensagens, IDs e correlação, fornecendo contexto mínimo ao agente. O plugin **não recebe** esse envelope nem produz outro resumo obrigatório dos recursos consultados. A resposta de `CWClient` é mantida nativa em `data` após validações internas. Nas consultas de contato individual a visão extraída é somente interna; nas pesquisas/históricos a lista é limitada à inbox, sem reduzir campos dos itens retidos. O agente pode consultar a API por necessidade contextual, mas não deve ser forçado a repetir leituras suficientes no lote.
+
+## Falhas depois de método potencialmente modificador
+
+`outcome_unknown` sinaliza incerteza quanto ao efeito. O SDK pode ter realizado GET interno antes de escrever e inclusive não ter enviado POST. O plugin não afirma transmissão nem aplica retry. O consumidor de atendimento é responsável por idempotência, reconciliação e autoridade de publicação única.

@@ -1,5 +1,15 @@
 # Histórico
 
+## 0.2.0rc4 — homolog (correção F1–F5)
+
+- Reconhece envelopes de contato para validação sem alterar o JSON original nas consultas individuais.
+- Confere IDs, conta e inbox em contato, detalhe, busca e histórico; mantém filtro de recursos por inbox.
+- Classifica conservadoramente tentativas de escrita ambíguas como `outcome_unknown`, inclusive etiquetas cujo SDK lê antes de eventualmente escrever.
+- Alinha `fields` ao `Contact` tipado e mantém os mapas livres de atributos.
+- Acrescenta regressões com SDK real e `httpx.MockTransport` em CI; provisionamento da dependência por SHA de homologação.
+- Documenta instalação por SHA e separação dos gates de código, integração e release.
+- **Pendente:** validação real Hermes/Chatwoot, adaptação dos schemas no provedor alvo e distribuição formal do SDK.
+
 ## 0.2.0rc3 — homolog
 
 - Torna o plugin agnóstico: exemplos, testes e documentação não contêm dados ou nomes de uma organização consumidora.

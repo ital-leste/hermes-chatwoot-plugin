@@ -1,4 +1,4 @@
-# Configuração e credenciais por perfil — v0.2.0rc3
+# Configuração e credenciais por perfil — v0.2.0rc4
 
 O plugin utiliza um único servidor Chatwoot por perfil Hermes, mas pode autenticar vários usuários diferentes na mesma instalação, inclusive na mesma conta. As credenciais são gerenciadas pelo perfil, nunca por um arquivo do plugin.
 
@@ -84,3 +84,7 @@ A configuração e o valor da variável de ambiente devem estar carregados no ru
 - JSON de API é retornado integralmente, exceto o filtro técnico de itens de inbox não solicitada. Tokens, cabeçalhos e exceções HTTP brutas não devem aparecer nos resultados ao modelo.
 
 Consulte [Segurança do perfil](SEGURANCA_PERFIL.md) e [Homologação](HOMOLOGACAO.md).
+
+## Política de dados nativos
+
+Não há redução automática de campos das respostas da Application API. Em operações individuais o JSON do SDK é devolvido tal como recebido em `data`. Em listagens limitadas à inbox os recursos de outras inboxes são excluídos; os campos e envelope dos itens permitidos são preservados. Credenciais de autenticação resolvidas pelo perfil não são inseridas nas respostas do plugin.
