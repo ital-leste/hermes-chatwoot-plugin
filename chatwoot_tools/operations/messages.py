@@ -74,7 +74,7 @@ def summarize_messages(cw: Any, aid: int, cid: int):
     ids = sorted(unique)
     # created_at e fornecido em segundos pelo Chatwoot; sem campo em todos
     # os itens, nao inferir qual foi a mensagem cronologicamente primeira.
-    has_timestamps = all(
+    has_timestamps = bool(ids) and all(
         type(m.get("created_at")) is int and m["created_at"] >= 0
         for m in unique.values()
     )
