@@ -52,7 +52,7 @@ def test_historico_completo_29_ids_unicos_e_primeira(plugin, cfg):
     assert data["last_message_id"] == 168
     assert data["message_ids"] == HistoricoSobreposto.ids
     assert [c[3] for c in client.calls if c[0] == "messages.list"] == [
-        {}, {"before": 151}, {"before": 127},
+        {}, {"before": 146}, {"before": 127},
     ]
 
 
