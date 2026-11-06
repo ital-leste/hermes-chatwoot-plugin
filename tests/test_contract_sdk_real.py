@@ -413,3 +413,42 @@ def test_schema_aceita_casos_validos_sem_mudar_valor(fields):
     spec.loader.exec_module(schema_module)
     assert not list(jsonschema.Draft7Validator(schema_module.CONTACT_FIELDS).iter_errors(fields))
     assert sdk.Contact(**fields).to_payload() == fields
+
+
+@pytest.mark.parametrize("media_status,code", [
+    (302, "media_redirect_rejected"),
+    (404, "media_unavailable"),
+])
+def test_sdk_real_classifica_download_antes_do_post(setup, monkeypatch, media_status, code):
+    import socket
+    from types import SimpleNamespace
+    from chatwoot_client import attachment_resolver as resolver
+
+    setup.settings["media_allowed_hosts"] = ["files.example.org"]
+    setup.callback = lambda req: conversation_response(req)
+    downloads = []
+    original_client = httpx.Client
+
+    def download_client(*args, **kwargs):
+        assert kwargs["follow_redirects"] is False
+        assert kwargs["trust_env"] is False
+        return original_client(transport=httpx.MockTransport(
+            lambda req: (downloads.append(req) or httpx.Response(
+                media_status, headers={"location": "https://outro.example.org/f.pdf"}
+            ))
+        ))
+
+    monkeypatch.setattr(resolver, "httpx", SimpleNamespace(
+        Client=download_client, HTTPError=httpx.HTTPError,
+    ))
+    monkeypatch.setattr(resolver.socket, "getaddrinfo", lambda *a, **k: [
+        (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))
+    ])
+    result = setup.call(
+        "chatwoot_send_media", media_url="https://files.example.org/a.pdf",
+        mime_type="application/pdf", filename="a.pdf",
+    )
+    assert result["error"]["code"] == code
+    assert setup.calls == [("GET", CONV)]
+    assert len(downloads) == 1
+    assert "Authorization" not in downloads[0].headers
