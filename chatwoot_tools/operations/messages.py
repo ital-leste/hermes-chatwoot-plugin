@@ -11,47 +11,81 @@ def list_messages(cw: Any, aid: int, cid: int, before=None, after=None):
 
 
 
-def summarize_messages(cw: Any, aid: int, cid: int):
-    """Conta IDs distintos em todas as paginas; nunca retorna total parcial como completo.
+# Contrato verificado em Chatwoot v4.19.0:
+# MessageFinder#messages_between: id >= after AND id < before,
+# ORDER BY created_at ASC, LIMIT 1000. Nunca inferir completude a partir
+# de before=min(id) em pagina de messages_before, que ordena por created_at.
+_CHATWOOT_ID_MAX = 2_147_483_647
+_INTERVAL_LIMIT = 1000
+_MAX_QUERIES = 128
+_MAX_MESSAGES = 100_000
 
-    Mantem list_messages como consulta crua de uma pagina. O resumo e um modo
-    opt-in da mesma ferramenta, sem delegar a contagem ao LLM.
+
+def summarize_messages(cw: Any, aid: int, cid: int):
+    """Consolida intervalos disjuntos de IDs sem depender da ordenacao temporal.
+
+    Requer a semantica de messages_between do Chatwoot 4.19.0. Um intervalo
+    com exatamente 1000 itens pode ter sido truncado e e subdividido; um
+    intervalo com menos de 1000 e completo. Erros nunca produzem complete=true.
     """
     unique: dict[int, dict] = {}
-    duplicates = 0
-    before = None
-    previous_min = None
-    max_pages = 100
-    for page in range(1, max_pages + 1):
-        result = list_messages(cw, aid, cid, before=before)
+    seen_count = 0
+    queries = 0
+    # (inclusive, exclusive); before > INT_MAX omite o limite superior
+    # no MessageFinder v4.19.0 e inclui tambem id=INT_MAX.
+    pending = [(0, _CHATWOOT_ID_MAX + 1)]
+    while pending:
+        if queries >= _MAX_QUERIES:
+            raise PaginationError("Limite de consultas; contagem nao comprovada.")
+        low, high = pending.pop()
+        result = list_messages(cw, aid, cid, after=low, before=high)
+        queries += 1
         if not isinstance(result, Mapping) or not isinstance(result.get("payload"), list):
             raise PaginationError("Envelope de pagina invalido; contagem nao comprovada.")
-        messages = result["payload"]
-        if not messages:
-            ids = sorted(unique)
-            return {
-                "complete": True, "unique_count": len(ids),
-                "duplicate_count": duplicates, "pages_read": page,
-                "first_message_id": ids[0] if ids else None,
-                "last_message_id": ids[-1] if ids else None,
-                "message_ids": ids,
-            }
-        current_ids = []
-        for item in messages:
-            if (not isinstance(item, Mapping)
-                    or type(item.get("id")) is not int or item["id"] <= 0):
-                raise PaginationError("Mensagem sem id valido; contagem nao comprovada.")
-            message_id = item["id"]
-            current_ids.append(message_id)
-            if message_id in unique:
-                duplicates += 1
-            else:
-                unique[message_id] = dict(item)
-        cursor = min(current_ids)
-        if previous_min is not None and cursor >= previous_min:
-            raise PaginationError("Cursor sem progresso; contagem nao comprovada.")
-        previous_min = before = cursor
-    raise PaginationError("Limite de paginas atingido; contagem nao comprovada.")
+        entries = result["payload"]
+        if len(entries) > _INTERVAL_LIMIT:
+            raise PaginationError("Limite da API alterado; contagem nao comprovada.")
+        for item in entries:
+            if not isinstance(item, Mapping) or type(item.get("id")) is not int:
+                raise PaginationError("Mensagem sem ID valido; contagem nao comprovada.")
+            mid = item["id"]
+            if not low <= mid < high or mid <= 0 or mid > _CHATWOOT_ID_MAX:
+                raise PaginationError("API ignorou intervalo de IDs; contagem nao comprovada.")
+        if len(entries) == _INTERVAL_LIMIT:
+            if high - low <= 1:
+                raise PaginationError("Intervalo saturado; contagem nao comprovada.")
+            middle = low + (high - low) // 2
+            pending.extend(((middle, high), (low, middle)))
+            continue
+        for item in entries:
+            mid = item["id"]
+            seen_count += 1
+            unique.setdefault(mid, dict(item))
+            if len(unique) > _MAX_MESSAGES:
+                raise PaginationError("Historico acima do limite; contagem nao comprovada.")
+
+    ids = sorted(unique)
+    # created_at e fornecido em segundos pelo Chatwoot; sem campo em todos
+    # os itens, nao inferir qual foi a mensagem cronologicamente primeira.
+    has_timestamps = all(
+        type(m.get("created_at")) is int and m["created_at"] >= 0
+        for m in unique.values()
+    )
+    earliest = (
+        min(unique, key=lambda mid: (unique[mid]["created_at"], mid))
+        if ids and has_timestamps else None
+    )
+    return {
+        "complete": True,
+        "unique_count": len(ids),
+        "duplicate_count": seen_count - len(ids),
+        "pages_read": queries,
+        "first_message_id": ids[0] if ids else None,
+        "last_message_id": ids[-1] if ids else None,
+        "first_chronological_id": earliest,
+        "chronology_verified": has_timestamps,
+        "message_ids": ids,
+    }
 
 
 def send(cw: Any, aid: int, cid: int, content: str, private: bool, *, prepared=None):
