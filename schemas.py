@@ -41,7 +41,7 @@ SCHEMAS = {
         "status": {"type":"string", "enum":["all", "open", "pending", "resolved", "snoozed"]},
         "q": {"type":"string", "minLength":1}, "page": {"type":"integer", "minimum":1},
     }),
-    "chatwoot_list_messages": schema("chatwoot_list_messages", "Consultar uma pagina crua ou, com summary=true, contar todos os IDs unicos ate a pagina vazia com primeira mensagem; falha se incompleto.", identity=CONVERSATION, extra={
+    "chatwoot_list_messages": schema("chatwoot_list_messages", "Consultar pagina nativa; summary=true: varrer intervalos disjuntos de IDs pelo contrato Chatwoot 4.19.0, sem supor ordenacao por ID; conferir com API em homologacao.", identity=CONVERSATION, extra={
         "before": {"type":"integer", "minimum":0}, "after": {"type":"integer", "minimum":0},
         "summary": {"type": "boolean", "description": "true: historico completo deduplicado; incompativel com before/after"},
     }),
