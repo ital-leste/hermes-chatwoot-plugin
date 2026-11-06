@@ -194,3 +194,10 @@ Exemplo de argumentos da ferramenta:
 
 O limite configurado nao comprova entrega de arquivos de 100 MB em audio ou video. Na WhatsApp Business Cloud API, documentos aceitam ate 100 MB, imagens ate 5 MB e audio/video ate 16 MB; o caminho Evolution/Baileys precisa de validacao operacional. O resultado `outcome_unknown` indica possível escrita já realizada; não repetir sem reconciliar.
 A ferramenta de mídias não amplia permissão de terminal, arquivos, navegador ou HTTP arbitrário.
+
+
+## Consulta integral de histórico e erros de mídia (G3)
+
+`chatwoot_list_messages` mantém o retorno nativo de uma única página por padrão. Para contar histórico completo sem duplicar IDs de páginas sobrepostas, usar `summary=true` sem cursores. O modo agregado retorna `unique_count`, `message_ids`, `first_message_id`, `duplicate_count`, `pages_read` e `complete=true`. A contagem é rejeitada com `pagination_incomplete` se não puder ser provada dentro do limite operacional; uma conversa alterada simultaneamente não é snapshot atômico.
+
+No envio de mídia, o SDK **não segue redirects**, mesmo sob o mesmo domínio: utilize a URL final do blob HTTPS, cujo host deve estar na allowlist. Redirecionamento gera `media_redirect_rejected`; falha de download/limite pré-POST gera `media_unavailable`. Essas falhas não criam mensagens. Uma falha depois de possível POST continua retornando `outcome_unknown` e nunca deve provocar reenvio automático.
