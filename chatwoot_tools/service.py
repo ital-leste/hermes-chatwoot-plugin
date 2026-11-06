@@ -7,7 +7,7 @@ from typing import Any
 
 from .config import WRITABLE_FIELDS, parse_config
 from .connection import create_client, resolve_connection, resolve_secret
-from .errors import ArgumentsError, AuthorizationError, PluginError, ScopeError
+from .errors import ArgumentsError, AuthorizationError, PluginError, ScopeError, PreWriteError
 from .permissions import require_fields, require_operation
 from .validators import contact_identity, conversation_identity
 from .operations import contacts, conversations, labels, messages
@@ -39,7 +39,7 @@ _WRITES = frozenset({
 _OPTIONS = {
     "chatwoot_get_conversation": (set(), set()),
     "chatwoot_list_conversations": ({"status", "q", "page"}, set()),
-    "chatwoot_list_messages": ({"before", "after"}, set()),
+    "chatwoot_list_messages": ({"before", "after", "summary"}, set()),
     "chatwoot_send_public_message": ({"content"}, {"content"}),
     "chatwoot_send_private_note": ({"content"}, {"content"}),
     "chatwoot_send_media": ({"media_url", "mime_type", "filename", "caption", "is_voice_message"}, {"media_url", "mime_type", "filename"}),
@@ -76,6 +76,11 @@ def _arguments(tool: str, raw: object) -> dict[str, Any]:
     for key in ("q", "content"):
         if key in data and (not isinstance(data[key], str) or not data[key].strip()):
             raise ArgumentsError(f"{key} deve ser texto não vazio.")
+    if tool == "chatwoot_list_messages":
+        if "summary" in data and type(data["summary"]) is not bool:
+            raise ArgumentsError("summary deve ser booleano.")
+        if data.get("summary") and ("before" in data or "after" in data):
+            raise ArgumentsError("summary exige historico integral sem cursores.")
     if tool == "chatwoot_send_media":
         from urllib.parse import urlsplit
         from pathlib import PurePosixPath, PureWindowsPath
@@ -226,7 +231,7 @@ class ToolService:
                     result = self._run(cw, tool, data, prepared)
             return json.dumps({"success": True, "operation": operation, "credential": data["credential"], "data": result}, ensure_ascii=False, allow_nan=False)
         except PluginError as exc:
-            if possible_write:
+            if possible_write and not isinstance(exc, PreWriteError):
                 return self._unknown()
             return self._error(exc.code, str(exc))
         except (ValueError, TypeError):
@@ -266,6 +271,8 @@ class ToolService:
         if tool == "chatwoot_list_conversations":
             return conversations.list_conversations(cw, aid, iid, **{k: data[k] for k in ("status", "q", "page") if k in data})
         if tool == "chatwoot_list_messages":
+            if data.get("summary", False):
+                return messages.summarize_messages(cw, aid, cid)
             return messages.list_messages(cw, aid, cid, **{k: data[k] for k in ("before", "after") if k in data})
         if tool in ("chatwoot_send_public_message", "chatwoot_send_private_note"):
             return messages.send(cw, aid, cid, data["content"], tool == "chatwoot_send_private_note", prepared=prepared)
