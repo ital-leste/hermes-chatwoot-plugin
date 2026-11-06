@@ -17,6 +17,6 @@ def send(cw: Any, aid: int, cid: int, content: str, private: bool, *, prepared=N
 def send_media(cw: Any, aid: int, cid: int, prepared, *, allowed_hosts: frozenset[str]):
     # O SDK resolve o HTTPS em cliente distinto, sem carregar token Chatwoot.
     return cw.messages.send_media(
-        aid, cid, prepared, max_bytes=15 * 1024 * 1024,
-        url_timeout=15.0, allowed_hosts=allowed_hosts,
+        aid, cid, prepared, max_bytes=100_000_000,
+        url_timeout=120.0, allowed_hosts=allowed_hosts,
     )

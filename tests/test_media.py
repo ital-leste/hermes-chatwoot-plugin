@@ -41,7 +41,7 @@ def test_media_somente_com_dupla_autorizacao(svc, cfg, factory, mime, filename, 
     assert message.caption == "Legenda"
     assert message.private is False
     assert message.is_voice_message is voice
-    assert extra["max_bytes"] == 15 * 1024 * 1024
+    assert extra["max_bytes"] == 100_000_000
     assert extra["allowed_hosts"] == frozenset({"midia.example.com"})
 
 

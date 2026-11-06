@@ -171,7 +171,7 @@ por meio de `CWClient.messages.send_media`. Ela aceita apenas **URL HTTPS**,
 nunca caminho local, bytes ou arquivos fornecidos diretamente pelo modelo.
 A origem precisa constar exatamente na lista `media_allowed_hosts` configurada pelo administrador;
 sem lista, a operação falha mesmo se `messages.send_media=true`.
-O SDK limita a transferência a 15 MiB, valida IPs públicos e recusa redirecionamentos.
+O plugin limita a transferência a 100 MB (100.000.000 bytes, teto geral; limites efetivos variam por categoria/canal), valida IPs públicos e recusa redirecionamentos.
 Os MIME autorizados são PNG/JPEG/WebP/GIF, PDF, MP4/WebM, MP3/OGG/WAV e áudio MP4.
 `is_voice_message=true` requer `audio/ogg`; áudio comum pode ser enviado como anexo.
 A ferramenta mantém os identificadores obrigatórios de conta, inbox e conversa, antes da escrita.
@@ -192,5 +192,5 @@ Exemplo de argumentos da ferramenta:
 {"credential":"atendimento","account_id":7,"inbox_id":4,"conversation_id":482,"media_url":"https://midia.example.com/exemplo.ogg","mime_type":"audio/ogg","filename":"exemplo.ogg","is_voice_message":true}
 ```
 
-O resultado `outcome_unknown` indica possível escrita já realizada; não repetir sem reconciliar.
+O limite configurado nao comprova entrega de arquivos de 100 MB em audio ou video. Na WhatsApp Business Cloud API, documentos aceitam ate 100 MB, imagens ate 5 MB e audio/video ate 16 MB; o caminho Evolution/Baileys precisa de validacao operacional. O resultado `outcome_unknown` indica possível escrita já realizada; não repetir sem reconciliar.
 A ferramenta de mídias não amplia permissão de terminal, arquivos, navegador ou HTTP arbitrário.
