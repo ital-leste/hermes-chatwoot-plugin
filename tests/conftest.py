@@ -48,6 +48,12 @@ def plugin(monkeypatch):
                 raise ValueError("Invalid voice")
             self.attachments, self.caption = attachments, caption
             self.private, self.is_voice_message = private, is_voice_message
+    class ErroAnexoChatwoot(ValueError):
+        pass
+    class ErroRedirecionamentoAnexoChatwoot(ErroAnexoChatwoot):
+        pass
+    fake.ErroAnexoChatwoot = ErroAnexoChatwoot
+    fake.ErroRedirecionamentoAnexoChatwoot = ErroRedirecionamentoAnexoChatwoot
     fake.Attachment, fake.MediaMessage = Attachment, MediaMessage
     fake.TextMessage, fake.Contact, fake.ConversationStatus = TextMessage, Contact, ConversationStatus
     monkeypatch.setitem(sys.modules, "chatwoot_client", fake)
