@@ -132,3 +132,43 @@ def test_config_allowlist_deve_ser_explicita(plugin):
             parse_config({**base, "media_allowed_hosts": bad})
     parsed = parse_config({**base, "media_allowed_hosts": ["midia.example.com"]})
     assert parsed.media_allowed_hosts == frozenset({"midia.example.com"})
+
+
+@pytest.mark.parametrize("kind,expected", [
+    ("redirect", "media_redirect_rejected"),
+    ("network", "media_unavailable"),
+])
+def test_falhas_download_pre_post_sao_conhecidas(svc, cfg, factory, kind, expected):
+    from chatwoot_client import (
+        ErroAnexoChatwoot, ErroRedirecionamentoAnexoChatwoot,
+    )
+    cfg["allowed_operations"]["messages.send_media"] = True
+    cfg["media_allowed_hosts"] = ["midia.example.com"]
+    client = factory.make("https://chatwoot.exemplo.com", "token_value")
+
+    def fail_media(*args, **kwargs):
+        if kind == "redirect":
+            raise ErroRedirecionamentoAnexoChatwoot("URL assinada simulada")
+        raise ErroAnexoChatwoot("token simulado e dados")
+
+    client.messages.send_media = fail_media
+    svc.client_factory = lambda *_: client
+    result = chamar(svc)
+    assert result["error"]["code"] == expected
+    assert "assinada" not in json.dumps(result)
+    assert "token simulado" not in json.dumps(result)
+    assert client.calls == [("conversation.get", 17, 482)]
+
+
+def test_timeout_apos_inicio_de_media_permanece_indeterminado(svc, cfg, factory):
+    cfg["allowed_operations"]["messages.send_media"] = True
+    cfg["media_allowed_hosts"] = ["midia.example.com"]
+    client = factory.make("https://chatwoot.exemplo.com", "token_value")
+
+    def fail_media(*args, **kwargs):
+        raise TimeoutError("POST talvez recebido")
+
+    client.messages.send_media = fail_media
+    svc.client_factory = lambda *_: client
+    result = chamar(svc)
+    assert result["error"]["code"] == "outcome_unknown"
