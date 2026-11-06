@@ -23,3 +23,19 @@ class ArgumentsError(PluginError):
 
 class CredentialsError(PluginError):
     code = "credentials_unavailable"
+
+
+class PreWriteError(PluginError):
+    """Falha comprovada antes de iniciar a escrita."""
+
+
+class MediaUnavailableError(PreWriteError):
+    code = "media_unavailable"
+
+
+class MediaRedirectRejectedError(PreWriteError):
+    code = "media_redirect_rejected"
+
+
+class PaginationError(PluginError):
+    code = "pagination_incomplete"
