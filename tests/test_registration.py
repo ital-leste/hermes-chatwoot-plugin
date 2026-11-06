@@ -28,6 +28,6 @@ def test_registro_nao_conecta_ao_chatwoot(plugin):
             self.handlers[name]=handler
     ctx=Ctx()
     plugin.register(ctx)
-    assert len(ctx.handlers)==12
+    assert len(ctx.handlers)==13
     result=json.loads(ctx.handlers["chatwoot_get_conversation"]({"credential":"atendimento","account_id":17,"inbox_id":4,"conversation_id":482},task_id="sessao1"))
     assert result["error"]["code"]=="invalid_configuration"

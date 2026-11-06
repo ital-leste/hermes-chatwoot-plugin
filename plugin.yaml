@@ -1,5 +1,5 @@
 name: chatwoot-tools
-version: 0.2.0-rc.4
+version: 0.2.0-rc.5
 description: Ferramentas para a Application API do Chatwoot via chatwoot_client.
 provides_tools:
   - chatwoot_get_conversation
@@ -7,6 +7,7 @@ provides_tools:
   - chatwoot_list_messages
   - chatwoot_send_public_message
   - chatwoot_send_private_note
+  - chatwoot_send_media
   - chatwoot_set_status
   - chatwoot_add_labels
   - chatwoot_remove_labels
@@ -35,3 +36,7 @@ config_schema:
     type: dict
     required: false
     description: Campos do contato cuja atualizacao esta autorizada.
+  media_allowed_hosts:
+    type: list
+    required: false
+    description: Lista explicita de hostnames HTTPS publicos para origem de midia; default vazio bloqueia envio.

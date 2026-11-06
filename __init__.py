@@ -16,6 +16,7 @@ def register(ctx) -> None:
             "allow_insecure_http": ctx.get_config("allow_insecure_http", default=False),
             "allowed_operations": ctx.get_config("allowed_operations", default={}),
             "writable_contact_fields": ctx.get_config("writable_contact_fields", default={}),
+            "media_allowed_hosts": ctx.get_config("media_allowed_hosts", default=[]),
         }
 
     service = ToolService(settings)

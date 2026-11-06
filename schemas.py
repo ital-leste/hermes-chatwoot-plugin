@@ -46,6 +46,13 @@ SCHEMAS = {
     }),
     "chatwoot_send_public_message": schema("chatwoot_send_public_message", "Publicar texto na conversa validada; HTTP nao comprova entrega ao canal.", identity=CONVERSATION, extra={"content": {"type":"string", "minLength":1}}, required=("content",)),
     "chatwoot_send_private_note": schema("chatwoot_send_private_note", "Criar nota privada na conversa validada.", identity=CONVERSATION, extra={"content": {"type":"string", "minLength":1}}, required=("content",)),
+    "chatwoot_send_media": schema("chatwoot_send_media", "Enviar imagem, documento, video ou audio publico por URL HTTPS de dominio explicitamente autorizado; nao aceitar caminhos locais. Para audio OGG de voz, is_voice_message=true.", identity=CONVERSATION, extra={
+        "media_url": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^https://"},
+        "mime_type": {"type": "string", "enum": ["image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf", "video/mp4", "video/webm", "audio/ogg", "audio/mpeg", "audio/wav", "audio/mp4"]},
+        "filename": {"type": "string", "minLength": 1, "maxLength": 255},
+        "caption": {"type": "string", "maxLength": 4000},
+        "is_voice_message": {"type": "boolean"},
+    }, required=("media_url", "mime_type", "filename")),
     "chatwoot_set_status": schema("chatwoot_set_status", "Alterar status da conversa validada.", identity=CONVERSATION, extra={
         "status": {"type":"string", "enum":["open", "pending", "resolved", "snoozed"]},
         "snoozed_until": {"type":"integer", "minimum":1},

@@ -32,6 +32,23 @@ def plugin(monkeypatch):
                 raise ValueError("invalid phone")
     class ConversationStatus(str):
         pass
+    class Attachment:
+        def __init__(self, source, mime_type, filename):
+            self.source, self.mime_type, self.filename = source, mime_type, filename
+        @classmethod
+        def from_url(cls, url, *, mime_type, filename):
+            if not url.startswith("https://"):
+                raise ValueError("HTTPS")
+            return cls(url, mime_type, filename)
+    class MediaMessage:
+        def __init__(self, attachments, *, caption=None, private=False, is_voice_message=False):
+            if is_voice_message and (
+                len(attachments) != 1 or attachments[0].mime_type != "audio/ogg"
+            ):
+                raise ValueError("Invalid voice")
+            self.attachments, self.caption = attachments, caption
+            self.private, self.is_voice_message = private, is_voice_message
+    fake.Attachment, fake.MediaMessage = Attachment, MediaMessage
     fake.TextMessage, fake.Contact, fake.ConversationStatus = TextMessage, Contact, ConversationStatus
     monkeypatch.setitem(sys.modules, "chatwoot_client", fake)
     return mod
@@ -48,7 +65,7 @@ class FakeClient:
         self.conversations = SimpleNamespace(get=self.get_conversation, list=self.list_conversations, set_status=self.set_status)
         self.contacts = SimpleNamespace(get=self.get_contact, list_conversations=self.contact_conversations,
                                         search=self.search_contacts, update=self.update_contact)
-        self.messages = SimpleNamespace(list=self.list_messages, send_text=self.send_text)
+        self.messages = SimpleNamespace(list=self.list_messages, send_text=self.send_text, send_media=self.send_media)
         self.conversation_labels = SimpleNamespace(add=self.add_labels, remove=self.remove_labels)
         self.search_items = search_items if search_items is not None else [{"id":25,"name":"Cliente"}]
         self._conversations = conversations if conversations is not None else [{"id":482,"account_id":17,"inbox_id":4}]
@@ -76,6 +93,11 @@ class FakeClient:
         self.calls.append(("messages.send_text",a,c,message.content,message.private))
         self._fail()
         return {"id":71,"content":message.content,"sender":{"phone":"+5511999"}}
+
+    def send_media(self, a, c, message, **kw):
+        self.calls.append(("messages.send_media", a, c, message, kw))
+        self._fail()
+        return {"id":72,"attachments":[{"file_type":"image"}]}
 
     def set_status(self,a,c,status,**kw):
         self.calls.append(("conversations.set_status",a,c,status,kw));return {"status":status}

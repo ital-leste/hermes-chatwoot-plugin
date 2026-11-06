@@ -79,7 +79,7 @@ Remover/comentar uma permissão é equivalente a `false`. Operações não decla
 
 HTTPS é obrigatório fora de loopback, salvo `allow_insecure_http: true` definido pelo operador em rede interna controlada. O nome de uma máquina em VPN não é automaticamente considerado loopback.
 
-## Ferramentas (12)
+## Ferramentas (13)
 
 | Ferramenta | Operação autorizadora | IDs obrigatórios (além de `credential`) |
 | --- | --- | --- |
@@ -108,7 +108,7 @@ Veja [Ferramentas](docs/FERRAMENTAS.md), [Configuração](docs/CONFIGURACAO.md) 
 
 ## Limites da escolha de usuário
 
-`credential` é uma **identidade de autenticação configurada**, não uma prova de que a pessoa correspondente solicitou a operação. Um agente que possua as credenciais `operador_a` e `operador_b` habilitadas poderá selecionar qualquer uma delas. Para exigir que determinado atendimento utilize apenas uma identidade, restrinja as entradas de `credentials` disponibilizadas ao perfil ou vincule a identidade por um consumidor confiável; a v0.2rc4 ainda não realiza autorização por sessão.
+`credential` é uma **identidade de autenticação configurada**, não uma prova de que a pessoa correspondente solicitou a operação. Um agente que possua as credenciais `operador_a` e `operador_b` habilitadas poderá selecionar qualquer uma delas. Para exigir que determinado atendimento utilize apenas uma identidade, restrinja as entradas de `credentials` disponibilizadas ao perfil ou vincule a identidade por um consumidor confiável; a v0.2rc5 ainda não realiza autorização por sessão.
 
 O Chatwoot determina a autoria efetiva da operação a partir do token autenticado e das permissões reais. O identificador `credential` não é o nome de usuário verificado pelo plugin. Para conferir a autoria, utilize os dados do servidor em uma homologação real.
 
@@ -162,3 +162,35 @@ Os testes unitários usam doubles; as regressões adicionais exercitam o SDK `ch
 - [Segurança do perfil Hermes](docs/SEGURANCA_PERFIL.md)
 - [Histórico de versões](CHANGELOG.md)
 - [Solicitação de revisão independente rc4](docs/REVISAO_INDEPENDENTE_RC4.md)
+
+
+## Mídias (RC5): imagens, PDF, vídeo e áudio
+
+A ferramenta `chatwoot_send_media` publica **um único anexo público** com legenda opcional,
+por meio de `CWClient.messages.send_media`. Ela aceita apenas **URL HTTPS**,
+nunca caminho local, bytes ou arquivos fornecidos diretamente pelo modelo.
+A origem precisa constar exatamente na lista `media_allowed_hosts` configurada pelo administrador;
+sem lista, a operação falha mesmo se `messages.send_media=true`.
+O SDK limita a transferência a 15 MiB, valida IPs públicos e recusa redirecionamentos.
+Os MIME autorizados são PNG/JPEG/WebP/GIF, PDF, MP4/WebM, MP3/OGG/WAV e áudio MP4.
+`is_voice_message=true` requer `audio/ogg`; áudio comum pode ser enviado como anexo.
+A ferramenta mantém os identificadores obrigatórios de conta, inbox e conversa, antes da escrita.
+
+Exemplo de configuração do perfil (sem qualquer segredo):
+```yaml
+plugins:
+  entries:
+    chatwoot-tools:
+      settings:
+        media_allowed_hosts: ["midia.example.com"]
+        allowed_operations:
+          messages.send_media: true
+```
+
+Exemplo de argumentos da ferramenta:
+```json
+{"credential":"atendimento","account_id":7,"inbox_id":4,"conversation_id":482,"media_url":"https://midia.example.com/exemplo.ogg","mime_type":"audio/ogg","filename":"exemplo.ogg","is_voice_message":true}
+```
+
+O resultado `outcome_unknown` indica possível escrita já realizada; não repetir sem reconciliar.
+A ferramenta de mídias não amplia permissão de terminal, arquivos, navegador ou HTTP arbitrário.

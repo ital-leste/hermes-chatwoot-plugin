@@ -18,6 +18,7 @@ TOOLS_TO_OPERATIONS = {
     "chatwoot_list_messages": "messages.read",
     "chatwoot_send_public_message": "messages.send_public",
     "chatwoot_send_private_note": "messages.send_private",
+    "chatwoot_send_media": "messages.send_media",
     "chatwoot_set_status": "conversation.status.update",
     "chatwoot_add_labels": "conversation.labels.add",
     "chatwoot_remove_labels": "conversation.labels.remove",
@@ -28,11 +29,11 @@ TOOLS_TO_OPERATIONS = {
 }
 _CONVERSATION = frozenset({
     "chatwoot_get_conversation", "chatwoot_list_messages", "chatwoot_send_public_message",
-    "chatwoot_send_private_note", "chatwoot_set_status", "chatwoot_add_labels", "chatwoot_remove_labels",
+    "chatwoot_send_private_note", "chatwoot_send_media", "chatwoot_set_status", "chatwoot_add_labels", "chatwoot_remove_labels",
 })
 _CONTACT = frozenset({"chatwoot_get_contact", "chatwoot_get_contact_conversations", "chatwoot_update_contact"})
 _WRITES = frozenset({
-    "messages.send_public", "messages.send_private", "conversation.status.update",
+    "messages.send_public", "messages.send_private", "messages.send_media", "conversation.status.update",
     "conversation.labels.add", "conversation.labels.remove", "contacts.update",
 })
 _OPTIONS = {
@@ -41,6 +42,7 @@ _OPTIONS = {
     "chatwoot_list_messages": ({"before", "after"}, set()),
     "chatwoot_send_public_message": ({"content"}, {"content"}),
     "chatwoot_send_private_note": ({"content"}, {"content"}),
+    "chatwoot_send_media": ({"media_url", "mime_type", "filename", "caption", "is_voice_message"}, {"media_url", "mime_type", "filename"}),
     "chatwoot_set_status": ({"status", "snoozed_until"}, {"status"}),
     "chatwoot_add_labels": ({"labels"}, {"labels"}),
     "chatwoot_remove_labels": ({"labels"}, {"labels"}),
@@ -74,6 +76,42 @@ def _arguments(tool: str, raw: object) -> dict[str, Any]:
     for key in ("q", "content"):
         if key in data and (not isinstance(data[key], str) or not data[key].strip()):
             raise ArgumentsError(f"{key} deve ser texto não vazio.")
+    if tool == "chatwoot_send_media":
+        from urllib.parse import urlsplit
+        from pathlib import PurePosixPath, PureWindowsPath
+        import re
+        mime_types = {"image/png", "image/jpeg", "image/webp", "image/gif",
+                      "application/pdf", "video/mp4", "video/webm",
+                      "audio/ogg", "audio/mpeg", "audio/wav", "audio/mp4"}
+        media_url, mime, filename = (
+            data["media_url"], data["mime_type"], data["filename"]
+        )
+        if not isinstance(media_url, str) or len(media_url) > 4096:
+            raise ArgumentsError("URL de midia invalida.")
+        try:
+            parsed = urlsplit(media_url)
+            port = parsed.port
+        except ValueError:
+            raise ArgumentsError("URL de midia invalida.") from None
+        if (parsed.scheme != "https" or not parsed.hostname
+                or parsed.username or parsed.password or parsed.fragment
+                or port not in (None, 443)):
+            raise ArgumentsError("Midia exige URL HTTPS sem credenciais.")
+        if type(mime) is not str or mime not in mime_types:
+            raise ArgumentsError("Tipo MIME nao autorizado.")
+        if (type(filename) is not str or not 1 <= len(filename) <= 255
+                or filename in (".", "..")
+                or filename != PurePosixPath(filename).name
+                or filename != PureWindowsPath(filename).name
+                or any(ord(x) < 32 or ord(x) == 127 for x in filename)):
+            raise ArgumentsError("Nome de anexo invalido.")
+        if "caption" in data and (
+            type(data["caption"]) is not str or len(data["caption"]) > 4000
+        ):
+            raise ArgumentsError("Legenda de midia invalida.")
+        voice = data.get("is_voice_message", False)
+        if type(voice) is not bool or (voice and mime != "audio/ogg"):
+            raise ArgumentsError("Mensagem de voz exige audio/ogg.")
     if "status" in data:
         choices = {"all", "open", "pending", "resolved", "snoozed"} if tool == "chatwoot_list_conversations" else {"open", "pending", "resolved", "snoozed"}
         if type(data["status"]) is not str or data["status"] not in choices:
@@ -116,6 +154,15 @@ def _prepare_write(tool: str, data: dict[str, Any]) -> Any:
     if tool in ("chatwoot_send_public_message", "chatwoot_send_private_note"):
         from chatwoot_client import TextMessage
         return TextMessage(data["content"], private=(tool == "chatwoot_send_private_note"))
+    if tool == "chatwoot_send_media":
+        from chatwoot_client import Attachment, MediaMessage
+        attachment = Attachment.from_url(
+            data["media_url"], mime_type=data["mime_type"], filename=data["filename"]
+        )
+        return MediaMessage(
+            attachments=[attachment], caption=data.get("caption"),
+            private=False, is_voice_message=data.get("is_voice_message", False),
+        )
     if tool == "chatwoot_set_status":
         from chatwoot_client import ConversationStatus
         return ConversationStatus(data["status"])
@@ -150,6 +197,13 @@ class ToolService:
                 raise AuthorizationError("Identidade de usuário não autorizada neste perfil.")
             if data["account_id"] != credential.account_id:
                 raise ScopeError("Conta não autorizada para a credencial selecionada.")
+            if tool == "chatwoot_send_media":
+                from urllib.parse import urlsplit
+                if not config.media_allowed_hosts:
+                    raise AuthorizationError("Envio de midia requer dominios de origem autorizados.")
+                host = urlsplit(data["media_url"]).hostname
+                if not host or host.lower().rstrip(".") not in config.media_allowed_hosts:
+                    raise AuthorizationError("Dominio da midia nao autorizado.")
             prepared = _prepare_write(tool, data) if operation in _WRITES else None
             url, token = resolve_connection(config, credential, self.secret_provider)
             with self.client_factory(url, token) as cw:
@@ -160,7 +214,7 @@ class ToolService:
                         result = conversation
                     else:
                         possible_write = operation in _WRITES
-                        result = self._run(cw, tool, data, prepared)
+                        result = self._run(cw, tool, data, prepared, allowed_hosts=config.media_allowed_hosts)
                 elif tool in _CONTACT:
                     contact = contact_identity(cw, aid, iid, data["contact_id"])
                     if tool == "chatwoot_get_contact":
@@ -205,7 +259,7 @@ class ToolService:
         return json.dumps({"success": False, "error": {"code": code, "message": message, **extras}}, ensure_ascii=False)
 
     @staticmethod
-    def _run(cw: Any, tool: str, data: dict[str, Any], prepared: Any = None) -> Any:
+    def _run(cw: Any, tool: str, data: dict[str, Any], prepared: Any = None, *, allowed_hosts: frozenset[str] = frozenset()) -> Any:
         aid, iid = data["account_id"], data["inbox_id"]
         cid = data.get("conversation_id")
         contact_id = data.get("contact_id")
@@ -215,6 +269,8 @@ class ToolService:
             return messages.list_messages(cw, aid, cid, **{k: data[k] for k in ("before", "after") if k in data})
         if tool in ("chatwoot_send_public_message", "chatwoot_send_private_note"):
             return messages.send(cw, aid, cid, data["content"], tool == "chatwoot_send_private_note", prepared=prepared)
+        if tool == "chatwoot_send_media":
+            return messages.send_media(cw, aid, cid, prepared, allowed_hosts=allowed_hosts)
         if tool == "chatwoot_set_status":
             return conversations.set_status(cw, aid, cid, data["status"], data.get("snoozed_until"), prepared=prepared)
         if tool in ("chatwoot_add_labels", "chatwoot_remove_labels"):

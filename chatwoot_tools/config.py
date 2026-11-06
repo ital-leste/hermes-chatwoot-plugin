@@ -12,7 +12,7 @@ from .errors import ConfigurationError
 
 OPERATIONS = frozenset({
     "conversation.read", "conversation.list", "messages.read", "messages.send_public",
-    "messages.send_private", "conversation.status.update", "conversation.labels.add",
+    "messages.send_private", "messages.send_media", "conversation.status.update", "conversation.labels.add",
     "conversation.labels.remove", "contacts.search", "contacts.read",
     "contacts.conversations.read", "contacts.update",
 })
@@ -20,7 +20,7 @@ WRITABLE_FIELDS = frozenset({
     "name", "phone_number", "email", "identifier", "blocked", "avatar_url",
     "additional_attributes", "custom_attributes",
 })
-_KEYS = frozenset({"base_url_env", "credentials", "allow_insecure_http", "allowed_operations", "writable_contact_fields"})
+_KEYS = frozenset({"base_url_env", "credentials", "allow_insecure_http", "allowed_operations", "writable_contact_fields", "media_allowed_hosts"})
 _ENV_NAME = re.compile(r"[A-Z_][A-Z0-9_]{0,127}\Z")
 _IDENTITY_NAME = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}\Z")
 _CREDENTIAL_KEYS = frozenset({"token_env", "account_id"})
@@ -100,6 +100,7 @@ class PluginConfig:
     allow_insecure_http: bool
     operations: frozenset[str]
     writable_fields: frozenset[str]
+    media_allowed_hosts: frozenset[str]
 
 
 def parse_config(raw: object) -> PluginConfig:
@@ -116,4 +117,12 @@ def parse_config(raw: object) -> PluginConfig:
         raise ConfigurationError("base_url_env não pode ser igual a token_env.")
     ops = _flags(raw.get("allowed_operations", {}), OPERATIONS, "allowed_operations")
     fields = _flags(raw.get("writable_contact_fields", {}), WRITABLE_FIELDS, "writable_contact_fields")
-    return PluginConfig(url_env, credentials, allow, ops, fields)
+    hosts = raw.get("media_allowed_hosts", [])
+    if (not isinstance(hosts, (list, tuple)) or
+            any(not isinstance(host, str) or
+                host != host.lower() or not re.fullmatch(
+                    r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))*", host
+                ) or "." not in host for host in hosts) or
+            len(set(hosts)) != len(hosts)):
+        raise ConfigurationError("media_allowed_hosts deve conter hostnames DNS explicitos sem wildcards.")
+    return PluginConfig(url_env, credentials, allow, ops, fields, frozenset(hosts))
