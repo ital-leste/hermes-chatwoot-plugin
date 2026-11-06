@@ -125,4 +125,12 @@ def parse_config(raw: object) -> PluginConfig:
                 ) or "." not in host for host in hosts) or
             len(set(hosts)) != len(hosts)):
         raise ConfigurationError("media_allowed_hosts deve conter hostnames DNS explicitos sem wildcards.")
+    for host in hosts:
+        try:
+            ip_address(host)
+        except ValueError:
+            if host.endswith((".localhost", ".local", ".internal")):
+                raise ConfigurationError("Hostname local nao autorizado para midia.")
+        else:
+            raise ConfigurationError("Endereco IP literal nao autorizado para midia.")
     return PluginConfig(url_env, credentials, allow, ops, fields, frozenset(hosts))
