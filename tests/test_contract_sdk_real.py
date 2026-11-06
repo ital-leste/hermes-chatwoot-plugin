@@ -452,3 +452,40 @@ def test_sdk_real_classifica_download_antes_do_post(setup, monkeypatch, media_st
     assert setup.calls == [("GET", CONV)]
     assert len(downloads) == 1
     assert "Authorization" not in downloads[0].headers
+
+
+def test_summary_sdk_real_intervalo_inclui_mensagens_fora_de_ordem(setup):
+    """Exercita contrato HTTP real do SDK, sem writes nem JSON falso da ferramenta."""
+    ids = sorted([*range(127, 132), *range(142, 154), *range(155, 169)])
+    messages = [
+        {"id": mid, "created_at": (140 if mid == 149 else 141 if mid == 150 else mid)}
+        for mid in ids
+    ]
+    queries = []
+
+    def handler(req):
+        if req.url.path == CONV:
+            return conversation_response(req)
+        assert req.url.path == MSG and req.method == "GET"
+        params = dict(req.url.params)
+        queries.append(params)
+        low, high = int(params["after"]), int(params["before"])
+        payload = [
+            row for row in messages
+            if row["id"] >= low and (high > 2_147_483_647 or row["id"] < high)
+        ]
+        return httpx.Response(
+            200, json={"meta": {}, "payload": sorted(
+                payload, key=lambda m: m["created_at"]
+            )[:1000]},
+        )
+
+    setup.callback = handler
+    out = setup.call("chatwoot_list_messages", summary=True)
+    assert out["success"], out
+    assert out["data"]["unique_count"] == 31
+    assert out["data"]["first_message_id"] == 127
+    assert 149 in out["data"]["message_ids"]
+    assert 150 in out["data"]["message_ids"]
+    assert queries == [{"after": "0", "before": "2147483648"}]
+    assert setup.calls == [("GET", CONV), ("GET", MSG)]
