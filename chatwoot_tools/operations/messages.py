@@ -54,7 +54,14 @@ def summarize_messages(cw: Any, aid: int, cid: int):
         if len(entries) == _INTERVAL_LIMIT:
             if high - low <= 1:
                 raise PaginationError("Intervalo saturado; contagem nao comprovada.")
-            middle = low + (high - low) // 2
+            # Usa um ID observado como pivô: divide o conjunto saturado
+            # sem percorrer dezenas de intervalos vazios no espaço INT32.
+            observed = sorted(item["id"] for item in entries)
+            middle = observed[len(observed) // 2]
+            if middle <= low or middle >= high:
+                middle = low + (high - low) // 2
+            if middle <= low or middle >= high:
+                raise PaginationError("Intervalo sem divisao segura.")
             pending.extend(((middle, high), (low, middle)))
             continue
         for item in entries:
