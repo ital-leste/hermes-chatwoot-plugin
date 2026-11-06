@@ -41,8 +41,9 @@ SCHEMAS = {
         "status": {"type":"string", "enum":["all", "open", "pending", "resolved", "snoozed"]},
         "q": {"type":"string", "minLength":1}, "page": {"type":"integer", "minimum":1},
     }),
-    "chatwoot_list_messages": schema("chatwoot_list_messages", "Consultar mensagens com JSON nativo integral apos verificar a conversa.", identity=CONVERSATION, extra={
+    "chatwoot_list_messages": schema("chatwoot_list_messages", "Consultar uma pagina crua ou, com summary=true, contar todos os IDs unicos ate a pagina vazia com primeira mensagem; falha se incompleto.", identity=CONVERSATION, extra={
         "before": {"type":"integer", "minimum":0}, "after": {"type":"integer", "minimum":0},
+        "summary": {"type": "boolean", "description": "true: historico completo deduplicado; incompativel com before/after"},
     }),
     "chatwoot_send_public_message": schema("chatwoot_send_public_message", "Publicar texto na conversa validada; HTTP nao comprova entrega ao canal.", identity=CONVERSATION, extra={"content": {"type":"string", "minLength":1}}, required=("content",)),
     "chatwoot_send_private_note": schema("chatwoot_send_private_note", "Criar nota privada na conversa validada.", identity=CONVERSATION, extra={"content": {"type":"string", "minLength":1}}, required=("content",)),
